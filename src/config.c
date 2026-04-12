@@ -158,7 +158,7 @@ static int parse_command_chain(const char *chain,
     snprintf(buf, sizeof(buf), "%s", chain);
     int count = 0;
     char *save = NULL;
-    char *tok = strtok_r(buf, ",", &save);
+    const char *tok = strtok_r(buf, ",", &save);
     while (tok && count < max) {
         if (parse_command(tok, &cmds[count]) == 0)
             count++;
@@ -226,6 +226,10 @@ static int parse_line(struct config *cfg, const char *path,
     }
 
     if (cfg->num_bindings >= MAX_BINDINGS) {
+        for (int i = 0; i < ncmds; i++) {
+            if (cmds[i].type == CMD_SHELL)
+                free(cmds[i].arg.shell_cmd);
+        }
         log_warn("%s:%d: too many bindings (max %d)",
                  path, lineno, MAX_BINDINGS);
         return -1;

@@ -826,14 +826,14 @@ void overlay_redraw(struct overlay *ov, struct region_state *rs) {
     request_frame(ov);
 }
 
-int overlay_get_width(struct overlay *ov) {
+int overlay_get_width(const struct overlay *ov) {
     if (!ov) return 0;
     /* Prefer xdg-output logical size, fall back to surface. */
     if (ov->out_width > 0) return ov->out_width;
     return (int)ov->surf_width;
 }
 
-int overlay_get_height(struct overlay *ov) {
+int overlay_get_height(const struct overlay *ov) {
     if (!ov) return 0;
     if (ov->out_height > 0) return ov->out_height;
     return (int)ov->surf_height;

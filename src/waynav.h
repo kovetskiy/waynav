@@ -122,8 +122,8 @@ void execute_commands(struct overlay *ov,
 struct overlay *overlay_create(void);
 void overlay_destroy(struct overlay *ov);
 void overlay_redraw(struct overlay *ov, struct region_state *rs);
-int overlay_get_width(struct overlay *ov);
-int overlay_get_height(struct overlay *ov);
+int overlay_get_width(const struct overlay *ov);
+int overlay_get_height(const struct overlay *ov);
 
 /* Run the event loop. Blocks until CMD_END or error. */
 int overlay_run(struct overlay *ov, struct config *cfg,
