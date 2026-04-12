@@ -8,10 +8,14 @@
 #include "log.h"
 #include "waynav.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 static void print_usage(const char *prog) {
     fprintf(stderr,
@@ -47,16 +51,36 @@ static const char *find_config_path(void) {
                  "%s/.config/waynav/waynavrc", home);
         FILE *f = fopen(buf, "r");
         if (f) { fclose(f); return buf; }
-
-        snprintf(buf, sizeof(buf), "%s/.keynavrc", home);
-        FILE *f2 = fopen(buf, "r");
-        if (f2) { fclose(f2); return buf; }
     }
 
     return NULL;
 }
 
+/* Try to acquire an exclusive lock. Returns fd on success,
+ * -1 if another instance is running. */
+static int acquire_lock(void) {
+    static char path[512];
+    const char *run = getenv("XDG_RUNTIME_DIR");
+    if (!run) run = "/tmp";
+    snprintf(path, sizeof(path), "%s/waynav.lock", run);
+
+    int fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    if (fd < 0) return -1;
+
+    if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
 int main(int argc, char **argv) {
+    int lock_fd = acquire_lock();
+    if (lock_fd < 0) {
+        /* Already running — exit silently. */
+        return 0;
+    }
+
     const char *config_path = NULL;
     const char *log_level_str = NULL;
 

@@ -23,9 +23,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input-event-codes.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/timerfd.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
@@ -177,6 +179,12 @@ struct overlay {
 
     /* Rendering */
     struct buffer_pool pool;
+
+    /* Key repeat */
+    int      repeat_fd;    /* timerfd */
+    int32_t  repeat_rate;  /* keys per second */
+    int32_t  repeat_delay; /* ms before first repeat */
+    uint32_t repeat_key;   /* evdev code of held key, 0=none */
 
     /* State pointers (set during overlay_run) */
     struct config       *cfg;
@@ -377,15 +385,34 @@ static void kbd_keymap(void *data, struct wl_keyboard *kbd,
     log_debug("keyboard keymap loaded");
 }
 
-static void kbd_key(void *data, struct wl_keyboard *kbd,
-                    uint32_t serial, uint32_t time,
-                    uint32_t key, uint32_t state) {
-    (void)kbd; (void)serial; (void)time;
-    struct overlay *ov = data;
-    if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
+static void disarm_repeat(struct overlay *ov) {
+    if (ov->repeat_fd < 0) return;
+    struct itimerspec its = {0};
+    timerfd_settime(ov->repeat_fd, 0, &its, NULL);
+    ov->repeat_key = 0;
+}
+
+static void arm_repeat(struct overlay *ov, uint32_t key) {
+    if (ov->repeat_fd < 0 || ov->repeat_rate <= 0)
         return;
-    if (!ov->xkb_state || !ov->cfg)
-        return;
+
+    ov->repeat_key = key;
+
+    long delay_ns = (long)ov->repeat_delay * 1000000L;
+    long rate_ns  = 1000000000L / ov->repeat_rate;
+
+    struct itimerspec its = {
+        .it_value    = { delay_ns / 1000000000L,
+                         delay_ns % 1000000000L },
+        .it_interval = { rate_ns / 1000000000L,
+                         rate_ns % 1000000000L },
+    };
+    timerfd_settime(ov->repeat_fd, 0, &its, NULL);
+}
+
+static void handle_key_dispatch(struct overlay *ov,
+                                uint32_t key) {
+    if (!ov->xkb_state || !ov->cfg) return;
 
     xkb_keycode_t kc = key + 8;
     xkb_keysym_t sym = xkb_state_key_get_one_sym(
@@ -399,9 +426,29 @@ static void kbd_key(void *data, struct wl_keyboard *kbd,
     if (!b) return;
 
     execute_commands(ov, ov->rs, b->commands, b->num_commands);
+}
 
-    if (!ov->running)
+static void kbd_key(void *data, struct wl_keyboard *kbd,
+                    uint32_t serial, uint32_t time,
+                    uint32_t key, uint32_t state) {
+    (void)kbd; (void)serial; (void)time;
+    struct overlay *ov = data;
+
+    if (state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+        if (key == ov->repeat_key)
+            disarm_repeat(ov);
         return;
+    }
+
+    handle_key_dispatch(ov, key);
+    if (!ov->running) return;
+
+    /* Check if this key should repeat (xkb knows). */
+    if (ov->xkb_keymap &&
+        xkb_keymap_key_repeats(ov->xkb_keymap, key + 8))
+        arm_repeat(ov, key);
+    else
+        disarm_repeat(ov);
 }
 
 static void kbd_modifiers(void *data, struct wl_keyboard *kbd,
@@ -416,13 +463,23 @@ static void kbd_modifiers(void *data, struct wl_keyboard *kbd,
     }
 }
 
+static void kbd_repeat_info(void *data,
+                            struct wl_keyboard *kbd,
+                            int32_t rate, int32_t delay) {
+    (void)kbd;
+    struct overlay *ov = data;
+    ov->repeat_rate  = rate;
+    ov->repeat_delay = delay;
+    log_debug("repeat info: rate=%d delay=%d", rate, delay);
+}
+
 static const struct wl_keyboard_listener kbd_listener = {
     .keymap      = kbd_keymap,
     .enter       = noop,
     .leave       = noop,
     .key         = kbd_key,
     .modifiers   = kbd_modifiers,
-    .repeat_info = noop,
+    .repeat_info = kbd_repeat_info,
 };
 
 /* ── Seat ───────────────────────────────────────────────── */
@@ -523,15 +580,11 @@ static void render_grid(struct overlay *ov, cairo_t *cr,
     int cols = rs->current.grid_cols;
     int rows = rs->current.grid_rows;
 
-    /* Outer rectangle. */
-    cairo_set_source_rgba(cr, 0.4, 0.6, 1.0, 0.8);
-    cairo_set_line_width(cr, 2.0);
+    /* Outer rectangle and grid lines — same weight. */
+    cairo_set_source_rgba(cr, 0.4, 0.6, 1.0, 0.5);
+    cairo_set_line_width(cr, 1.0);
     cairo_rectangle(cr, x + 0.5, y + 0.5, w - 1, h - 1);
     cairo_stroke(cr);
-
-    /* Grid lines. */
-    cairo_set_line_width(cr, 1.0);
-    cairo_set_source_rgba(cr, 0.4, 0.6, 1.0, 0.5);
 
     /* Vertical lines. */
     for (int c = 1; c < cols; c++) {
@@ -580,6 +633,8 @@ struct overlay *overlay_create(void) {
     if (!ov) return NULL;
 
     ov->out_scale = 1;
+    ov->repeat_fd = timerfd_create(CLOCK_MONOTONIC,
+                                   TFD_NONBLOCK | TFD_CLOEXEC);
     ov->xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     if (!ov->xkb_ctx) {
         free(ov);
@@ -705,6 +760,9 @@ fail:
 void overlay_destroy(struct overlay *ov) {
     if (!ov) return;
 
+    if (ov->repeat_fd >= 0)
+        close(ov->repeat_fd);
+
     if (ov->vptr)
         zwlr_virtual_pointer_v1_destroy(ov->vptr);
     if (ov->frame_cb)
@@ -795,10 +853,44 @@ int overlay_run(struct overlay *ov, struct config *cfg,
     /* Initial frame. */
     send_frame(ov);
 
+    int wl_fd = wl_display_get_fd(ov->display);
+
+    struct pollfd fds[2];
+    fds[0].fd     = wl_fd;
+    fds[0].events = POLLIN;
+    fds[1].fd     = ov->repeat_fd;
+    fds[1].events = POLLIN;
+    int nfds = ov->repeat_fd >= 0 ? 2 : 1;
+
     while (ov->running) {
-        if (wl_display_dispatch(ov->display) < 0) {
-            log_err("wl_display_dispatch failed");
+        /* Flush outgoing requests before blocking. */
+        while (wl_display_prepare_read(ov->display) != 0)
+            wl_display_dispatch_pending(ov->display);
+        wl_display_flush(ov->display);
+
+        if (poll(fds, (nfds_t)nfds, -1) < 0) {
+            wl_display_cancel_read(ov->display);
+            if (errno == EINTR) continue;
+            log_err("poll failed: %s", strerror(errno));
             return -1;
+        }
+
+        /* Wayland events. */
+        if (fds[0].revents & POLLIN) {
+            wl_display_read_events(ov->display);
+        } else {
+            wl_display_cancel_read(ov->display);
+        }
+        wl_display_dispatch_pending(ov->display);
+
+        /* Key repeat timer. */
+        if (nfds > 1 && (fds[1].revents & POLLIN)) {
+            uint64_t expirations;
+            if (read(ov->repeat_fd, &expirations,
+                     sizeof(expirations)) > 0 &&
+                ov->repeat_key != 0) {
+                handle_key_dispatch(ov, ov->repeat_key);
+            }
         }
     }
 

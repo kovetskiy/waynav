@@ -53,6 +53,8 @@ void execute_commands(struct overlay *ov,
                       struct region_state *rs,
                       const struct command *cmds,
                       int ncmds) {
+    bool did_history_back = false;
+
     for (int i = 0; i < ncmds; i++) {
         const struct command *c = &cmds[i];
         int cx, cy;
@@ -134,6 +136,7 @@ void execute_commands(struct overlay *ov,
             break;
         case CMD_HISTORY_BACK:
             region_history_back(rs);
+            did_history_back = true;
             break;
         case CMD_SHELL:
             if (c->arg.shell_cmd)
@@ -146,7 +149,10 @@ void execute_commands(struct overlay *ov,
               rs->current.w, rs->current.h,
               rs->current.x, rs->current.y);
 
-    /* After each command chain, save state and redraw. */
-    region_save(rs);
+    /* After each command chain, save state and redraw.
+     * Skip save if we just restored from history — otherwise
+     * the restored state gets pushed right back. */
+    if (!did_history_back)
+        region_save(rs);
     overlay_redraw(ov, rs);
 }
