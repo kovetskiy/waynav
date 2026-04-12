@@ -30,9 +30,15 @@ make install
 Useful developer targets:
 
 ```sh
+make check
+make dist
 make lint
 make clean
 ```
+
+Builds from a git checkout derive `waynav --version` from
+`git describe --tags`. Source tarballs fall back to the Meson project
+version.
 
 ## Quick start
 

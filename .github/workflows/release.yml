@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libwayland-dev \
+            wayland-protocols \
+            libxkbcommon-dev \
+            libcairo2-dev \
+            clang-format \
+            clang-tools \
+            cppcheck
+          python -m pip install meson ninja
+
+      - name: Check
+        run: make check
+
+      - name: Create dist archive
+        run: make dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" build/meson-dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              build/meson-dist/* \
+              --generate-notes \
+              --verify-tag
+          fi

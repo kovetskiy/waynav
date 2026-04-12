@@ -1,38 +1,44 @@
-.PHONY: all build test clean install fmt lint lint-tidy lint-scan lint-cppcheck
+.PHONY: all build test check dist clean install fmt fmt-check lint lint-tidy lint-scan lint-cppcheck
 
 BUILDDIR ?= build
 PREFIX ?= /usr
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
+MESON_SETUP_ARGS = --prefix $(PREFIX) -Dbuild_version=$(VERSION)
 
 all: build
 
 build:
-	@test -d $(BUILDDIR) || meson setup $(BUILDDIR) --prefix $(PREFIX)
+	test -d $(BUILDDIR) || meson setup $(BUILDDIR) $(MESON_SETUP_ARGS)
 	meson compile -C $(BUILDDIR)
 
 test: build
 	meson test -C $(BUILDDIR)
 
+check: fmt-check test lint
+
+dist: build
+	meson dist -C $(BUILDDIR)
+
 clean:
 	rm -rf $(BUILDDIR)
 
 fmt:
-	@clang-format -i src/*.c src/*.h
+	clang-format -i src/*.c src/*.h
 
-lint: build
-	@$(MAKE) -j3 --no-print-directory lint-tidy lint-scan lint-cppcheck
+fmt-check:
+	clang-format --dry-run --Werror src/*.c src/*.h
+
+lint: lint-tidy lint-scan lint-cppcheck
 
 lint-tidy: build
-	@echo "── clang-tidy ──"
-	@run-clang-tidy -p $(BUILDDIR) -j$$(nproc) -quiet src/*.c
+	run-clang-tidy -p $(BUILDDIR) -j$$(nproc) -quiet src/*.c
 
 lint-scan: build
-	@echo "── scan-build ──"
-	@ninja -C $(BUILDDIR) scan-build
+	ninja -C $(BUILDDIR) scan-build
 
 lint-cppcheck: build
-	@echo "── cppcheck ──"
-	@mkdir -p $(BUILDDIR)/cppcheck
-	@cppcheck --enable=all --std=c11 \
+	mkdir -p $(BUILDDIR)/cppcheck
+	cppcheck --enable=all --std=c11 \
 		--suppress=missingIncludeSystem \
 		--suppress=missingInclude \
 		--suppress=normalCheckLevelMaxBranches \
@@ -42,5 +48,4 @@ lint-cppcheck: build
 		-I src/ src/*.c
 
 install: build
-	meson setup --reconfigure $(BUILDDIR) --prefix $(PREFIX)
 	meson install -C $(BUILDDIR)

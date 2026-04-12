@@ -72,18 +72,12 @@ static const struct {
     const char *name;
     enum command_type type;
 } simple_commands[] = {
-    {"start", CMD_START},
-    {"end", CMD_END},
-    {"cut-left", CMD_CUT_LEFT},
-    {"cut-right", CMD_CUT_RIGHT},
-    {"cut-up", CMD_CUT_UP},
-    {"cut-down", CMD_CUT_DOWN},
-    {"move-left", CMD_MOVE_LEFT},
-    {"move-right", CMD_MOVE_RIGHT},
-    {"move-up", CMD_MOVE_UP},
-    {"move-down", CMD_MOVE_DOWN},
-    {"warp", CMD_WARP},
-    {"history-back", CMD_HISTORY_BACK},
+    {"start", CMD_START},         {"end", CMD_END},
+    {"cut-left", CMD_CUT_LEFT},   {"cut-right", CMD_CUT_RIGHT},
+    {"cut-up", CMD_CUT_UP},       {"cut-down", CMD_CUT_DOWN},
+    {"move-left", CMD_MOVE_LEFT}, {"move-right", CMD_MOVE_RIGHT},
+    {"move-up", CMD_MOVE_UP},     {"move-down", CMD_MOVE_DOWN},
+    {"warp", CMD_WARP},           {"history-back", CMD_HISTORY_BACK},
 };
 
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
@@ -92,8 +86,7 @@ static bool try_simple_command(const char *str, struct command *cmd) {
     for (size_t i = 0; i < ARRAY_LEN(simple_commands); i++) {
         const char *name = simple_commands[i].name;
         size_t len = strlen(name);
-        if (strncmp(str, name, len) == 0 &&
-            !isalpha((unsigned char)str[len])) {
+        if (strncmp(str, name, len) == 0 && !isalpha((unsigned char)str[len])) {
             cmd->type = simple_commands[i].type;
             return true;
         }
@@ -124,8 +117,7 @@ static int parse_command(const char *str, struct command *cmd) {
     if (try_simple_command(str, cmd))
         return 0;
 
-    if (strncmp(str, "grid", 4) == 0 &&
-        !isalpha((unsigned char)str[4])) {
+    if (strncmp(str, "grid", 4) == 0 && !isalpha((unsigned char)str[4])) {
         cmd->type = CMD_GRID;
         int cols = 0, rows = 0;
         if (sscanf(str + 4, " %dx%d", &cols, &rows) == 2) {
@@ -156,8 +148,7 @@ static int parse_command(const char *str, struct command *cmd) {
             cmd->arg.zoom.w = s;
             cmd->arg.zoom.h = s;
         }
-    } else if (strncmp(str, "shell", 5) == 0 ||
-               strncmp(str, "sh", 2) == 0) {
+    } else if (strncmp(str, "shell", 5) == 0 || strncmp(str, "sh", 2) == 0) {
         return parse_shell(str, cmd);
     } else {
         return -1;
@@ -182,27 +173,24 @@ static int parse_command_chain(const char *chain, struct command *cmds,
     return count;
 }
 
-static void store_start_commands(struct config *cfg,
-                                 const struct command *cmds,
+static void store_start_commands(struct config *cfg, const struct command *cmds,
                                  int ncmds) {
     cfg->num_start_commands = 0;
     for (int i = 1; i < ncmds; i++)
         cfg->start_commands[cfg->num_start_commands++] = cmds[i];
-    log_debug("start binding: %d chained commands",
-              cfg->num_start_commands);
+    log_debug("start binding: %d chained commands", cfg->num_start_commands);
 }
 
-static int store_binding(struct config *cfg, const char *path,
-                         int lineno, xkb_keysym_t sym,
-                         uint32_t mods, const struct command *cmds,
-                         int ncmds) {
+static int store_binding(struct config *cfg, const char *path, int lineno,
+                         xkb_keysym_t sym, uint32_t mods,
+                         const struct command *cmds, int ncmds) {
     if (cfg->num_bindings >= MAX_BINDINGS) {
         for (int i = 0; i < ncmds; i++) {
             if (cmds[i].type == CMD_SHELL)
                 free(cmds[i].arg.shell_cmd);
         }
-        log_warn("%s:%d: too many bindings (max %d)", path,
-                 lineno, MAX_BINDINGS);
+        log_warn("%s:%d: too many bindings (max %d)", path, lineno,
+                 MAX_BINDINGS);
         return -1;
     }
 
@@ -213,13 +201,12 @@ static int store_binding(struct config *cfg, const char *path,
     memcpy(b->commands, cmds, ncmds * sizeof(struct command));
     cfg->num_bindings++;
 
-    log_debug("bind: sym=0x%x mods=0x%x cmds=%d", sym, mods,
-              ncmds);
+    log_debug("bind: sym=0x%x mods=0x%x cmds=%d", sym, mods, ncmds);
     return 0;
 }
 
-static int parse_line(struct config *cfg, const char *path,
-                      int lineno, char *line) {
+static int parse_line(struct config *cfg, const char *path, int lineno,
+                      char *line) {
     char *comment = strchr(line, '#');
     if (comment)
         *comment = '\0';
@@ -253,7 +240,7 @@ static int parse_line(struct config *cfg, const char *path,
         return -1;
     }
 
-    struct command cmds[MAX_COMMANDS];
+    struct command cmds[MAX_COMMANDS] = {0};
     int ncmds = parse_command_chain(chain, cmds, MAX_COMMANDS);
     if (ncmds <= 0)
         return 0;
@@ -263,8 +250,7 @@ static int parse_line(struct config *cfg, const char *path,
         return 0;
     }
 
-    return store_binding(cfg, path, lineno, sym, mods, cmds,
-                         ncmds);
+    return store_binding(cfg, path, lineno, sym, mods, cmds, ncmds);
 }
 
 int config_load(struct config *cfg, const char *path) {

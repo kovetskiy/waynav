@@ -68,14 +68,10 @@ typedef void (*region_fn)(struct region_state *);
 /* Index by command_type for simple region-only commands.
  * NULL entries are handled by the main dispatch. */
 static region_fn region_dispatch[] = {
-    [CMD_CUT_LEFT] = region_cut_left,
-    [CMD_CUT_RIGHT] = region_cut_right,
-    [CMD_CUT_UP] = region_cut_up,
-    [CMD_CUT_DOWN] = region_cut_down,
-    [CMD_MOVE_LEFT] = region_move_left,
-    [CMD_MOVE_RIGHT] = region_move_right,
-    [CMD_MOVE_UP] = region_move_up,
-    [CMD_MOVE_DOWN] = region_move_down,
+    [CMD_CUT_LEFT] = region_cut_left,   [CMD_CUT_RIGHT] = region_cut_right,
+    [CMD_CUT_UP] = region_cut_up,       [CMD_CUT_DOWN] = region_cut_down,
+    [CMD_MOVE_LEFT] = region_move_left, [CMD_MOVE_RIGHT] = region_move_right,
+    [CMD_MOVE_UP] = region_move_up,     [CMD_MOVE_DOWN] = region_move_down,
 };
 
 static void stop_drag(struct overlay *ov, struct region_state *rs) {
@@ -96,8 +92,7 @@ static void exec_drag(struct overlay *ov, struct region_state *rs,
     }
     int cx, cy;
     region_center(rs, &cx, &cy);
-    log_debug("drag start button=%d at %d,%d",
-              c->arg.button, cx, cy);
+    log_debug("drag start button=%d at %d,%d", c->arg.button, cx, cy);
     vptr_warp(ov, cx, cy);
     vptr_button_down(ov, c->arg.button);
     rs->dragging = true;
@@ -157,12 +152,9 @@ typedef void (*cmd_handler)(struct overlay *, struct region_state *,
 
 /* Index by command_type. NULL entries are no-ops. */
 static cmd_handler cmd_dispatch[] = {
-    [CMD_GRID] = exec_grid,
-    [CMD_CELL_SELECT] = exec_cell_select,
-    [CMD_WARP] = exec_warp,
-    [CMD_CLICK] = exec_click,
-    [CMD_DRAG] = exec_drag,
-    [CMD_CURSORZOOM] = exec_cursorzoom,
+    [CMD_GRID] = exec_grid,   [CMD_CELL_SELECT] = exec_cell_select,
+    [CMD_WARP] = exec_warp,   [CMD_CLICK] = exec_click,
+    [CMD_DRAG] = exec_drag,   [CMD_CURSORZOOM] = exec_cursorzoom,
     [CMD_SHELL] = exec_shell,
 };
 
@@ -170,14 +162,15 @@ static bool execute_one(struct overlay *ov, struct region_state *rs,
                         const struct command *c) {
     log_debug("exec: %s", cmd_name(c->type));
 
-    if ((size_t)c->type < sizeof(region_dispatch) / sizeof(region_dispatch[0])
-        && region_dispatch[c->type]) {
+    if ((size_t)c->type <
+            sizeof(region_dispatch) / sizeof(region_dispatch[0]) &&
+        region_dispatch[c->type]) {
         region_dispatch[c->type](rs);
         return false;
     }
 
-    if ((size_t)c->type < sizeof(cmd_dispatch) / sizeof(cmd_dispatch[0])
-        && cmd_dispatch[c->type]) {
+    if ((size_t)c->type < sizeof(cmd_dispatch) / sizeof(cmd_dispatch[0]) &&
+        cmd_dispatch[c->type]) {
         cmd_dispatch[c->type](ov, rs, c);
         return false;
     }

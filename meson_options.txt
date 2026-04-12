@@ -1,0 +1,6 @@
+option(
+  'build_version',
+  type: 'string',
+  value: '',
+  description: 'Version string embedded in the binary',
+)

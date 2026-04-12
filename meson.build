@@ -8,12 +8,17 @@ project(
     'werror=true',
   ],
   license: 'MIT',
-  version: '0.1.0',
+  version: '1.0.0',
 )
+
+build_version = get_option('build_version')
+if build_version == ''
+  build_version = meson.project_version()
+endif
 
 add_project_arguments(
   '-D_GNU_SOURCE=200809L',
-  '-DVERSION="@0@"'.format(meson.project_version()),
+  '-DVERSION="@0@"'.format(build_version),
   language: 'c',
 )
 
