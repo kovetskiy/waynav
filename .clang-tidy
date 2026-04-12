@@ -11,10 +11,12 @@ Checks: >
   misc-*,
   -misc-unused-parameters,
   -misc-include-cleaner,
-
   performance-*,
   portability-*,
+  readability-function-cognitive-complexity,
   readability-implicit-bool-conversion,
   readability-redundant-*,
-WarningsAsErrors: ''
+WarningsAsErrors: 'readability-function-cognitive-complexity'
 HeaderFilterRegex: 'src/.*'
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: '25'

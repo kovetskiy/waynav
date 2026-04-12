@@ -41,4 +41,5 @@ lint-cppcheck: build
 		-I src/ src/*.c
 
 install: build
-	meson install -C $(BUILDDIR)
+	install -d $(HOME)/bin
+	install -m 755 $(BUILDDIR)/waynav $(HOME)/bin/waynav
