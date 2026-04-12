@@ -1,11 +1,12 @@
 .PHONY: all build test clean install fmt lint lint-tidy lint-scan lint-cppcheck
 
 BUILDDIR ?= build
+PREFIX ?= /usr
 
 all: build
 
 build:
-	@test -d $(BUILDDIR) || meson setup $(BUILDDIR)
+	@test -d $(BUILDDIR) || meson setup $(BUILDDIR) --prefix $(PREFIX)
 	meson compile -C $(BUILDDIR)
 
 test: build
@@ -41,5 +42,5 @@ lint-cppcheck: build
 		-I src/ src/*.c
 
 install: build
-	install -d $(HOME)/bin
-	install -m 755 $(BUILDDIR)/waynav $(HOME)/bin/waynav
+	meson setup --reconfigure $(BUILDDIR) --prefix $(PREFIX)
+	meson install -C $(BUILDDIR)

@@ -24,7 +24,7 @@ Status: experimental, but already usable. Tested on niri.
 ```sh
 make
 make test
-make install   # installs to ~/bin/waynav
+make install
 ```
 
 Useful developer targets:
@@ -36,7 +36,9 @@ make clean
 
 ## Quick start
 
-1. Build and install the binary.
+1. Build and install the binary. The default install prefix is
+   `/usr`. Override `PREFIX` if you want a different install
+   location.
 2. Bind a compositor shortcut that launches `waynav`.
 3. Create `~/.config/waynav/waynavrc`.
 4. Press the compositor shortcut, navigate, and press `semicolon` or
