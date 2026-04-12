@@ -63,3 +63,10 @@ config_test = executable(
   dependencies: [math, xkbcommon],
 )
 test('config', config_test)
+
+input_test = executable(
+  'test_input',
+  ['tests/test_input.c', 'src/input.c', 'src/grid.c', 'src/log.c'],
+  dependencies: [math],
+)
+test('input', input_test)
