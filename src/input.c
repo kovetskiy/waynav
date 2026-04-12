@@ -65,7 +65,7 @@ void execute_commands(struct overlay *ov,
             break;
         case CMD_END:
             log_info("end");
-            overlay_hide(ov);
+            overlay_stop(ov);
             break;
         case CMD_GRID:
             log_debug("grid %dx%d",

@@ -112,13 +112,25 @@ const struct binding *config_find_binding(
 
 struct overlay;
 
+/* ── Input dispatch ──────────────────────────────────────── */
+
+void execute_commands(struct overlay *ov,
+                      struct region_state *rs,
+                      const struct command *cmds,
+                      int ncmds);
+
 struct overlay *overlay_create(void);
 void overlay_destroy(struct overlay *ov);
-void overlay_show(struct overlay *ov, struct region_state *rs);
-void overlay_hide(struct overlay *ov);
 void overlay_redraw(struct overlay *ov, struct region_state *rs);
 int overlay_get_width(struct overlay *ov);
 int overlay_get_height(struct overlay *ov);
+
+/* Run the event loop. Blocks until CMD_END or error. */
+int overlay_run(struct overlay *ov, struct config *cfg,
+                struct region_state *rs);
+
+/* Signal the overlay to stop its event loop. */
+void overlay_stop(struct overlay *ov);
 
 /* ── Virtual pointer ────────────────────────────────────── */
 
