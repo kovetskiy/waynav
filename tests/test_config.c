@@ -10,7 +10,6 @@
 #include <string.h>
 #include <unistd.h>
 
-/* Write a temporary config file and parse it. */
 static void write_tmp_config(const char *content, const char *path) {
     FILE *f = fopen(path, "w");
     assert(f);

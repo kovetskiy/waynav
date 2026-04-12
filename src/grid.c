@@ -6,7 +6,6 @@
  */
 
 #include "waynav.h"
-#include <math.h>
 #include <string.h>
 
 void region_init(struct region_state *rs, int scr_w, int scr_h) {
@@ -23,7 +22,6 @@ void region_init(struct region_state *rs, int scr_w, int scr_h) {
 }
 
 void region_save(struct region_state *rs) {
-    /* Shift history if full. */
     if (rs->history_len >= HISTORY_MAX) {
         memmove(&rs->history[0], &rs->history[1],
                 (HISTORY_MAX - 1) * sizeof(struct region));
@@ -105,8 +103,7 @@ void region_move_down(struct region_state *rs) {
     rs->current.y += rs->current.h;
 }
 
-void region_cursorzoom(struct region_state *rs,
-                       int cursor_x, int cursor_y,
+void region_cursorzoom(struct region_state *rs, int cursor_x, int cursor_y,
                        int w, int h) {
     rs->current.x = cursor_x - w / 2;
     rs->current.y = cursor_y - h / 2;

@@ -16,7 +16,6 @@
 static xkb_keysym_t parse_keysym(const char *name) {
     xkb_keysym_t sym = xkb_keysym_from_name(name, 0);
     if (sym == XKB_KEY_NoSymbol) {
-        /* Try case-insensitive. */
         sym = xkb_keysym_from_name(name, XKB_KEYSYM_CASE_INSENSITIVE);
     }
     return sym;
@@ -25,8 +24,8 @@ static xkb_keysym_t parse_keysym(const char *name) {
 /* Parse "shift+ctrl+h" into keysym + modifier mask.
  * Modifiers: shift, ctrl, alt, super.
  * Last token is the key name. */
-static int parse_keysequence(const char *seq,
-                             xkb_keysym_t *sym, uint32_t *mods) {
+static int parse_keysequence(const char *seq, xkb_keysym_t *sym,
+                             uint32_t *mods) {
     char buf[256];
     snprintf(buf, sizeof(buf), "%s", seq);
 
@@ -39,7 +38,6 @@ static int parse_keysequence(const char *seq,
 
     while (tok) {
         if (last) {
-            /* Previous token was a modifier. */
             if (strcasecmp(last, "shift") == 0)
                 *mods |= MOD_SHIFT;
             else if (strcasecmp(last, "ctrl") == 0 ||
@@ -72,7 +70,6 @@ static int parse_keysequence(const char *seq,
 /* Parse a single command string like "click 1" or "grid 4x4"
  * into a struct command. Returns 0 on success. */
 static int parse_command(const char *str, struct command *cmd) {
-    /* Skip leading whitespace. */
     while (isspace((unsigned char)*str))
         str++;
 
@@ -80,7 +77,8 @@ static int parse_command(const char *str, struct command *cmd) {
         cmd->type = CMD_START;
     } else if (strncmp(str, "end", 3) == 0) {
         cmd->type = CMD_END;
-    } else if (strncmp(str, "grid", 4) == 0 && !isalpha((unsigned char)str[4])) {
+    } else if (strncmp(str, "grid", 4) == 0 &&
+               !isalpha((unsigned char)str[4])) {
         cmd->type = CMD_GRID;
         int cols = 0, rows = 0;
         if (sscanf(str + 4, " %dx%d", &cols, &rows) == 2) {
@@ -110,7 +108,8 @@ static int parse_command(const char *str, struct command *cmd) {
         cmd->type = CMD_MOVE_UP;
     } else if (strncmp(str, "move-down", 9) == 0) {
         cmd->type = CMD_MOVE_DOWN;
-    } else if (strncmp(str, "warp", 4) == 0 && !isalpha((unsigned char)str[4])) {
+    } else if (strncmp(str, "warp", 4) == 0 &&
+               !isalpha((unsigned char)str[4])) {
         cmd->type = CMD_WARP;
     } else if (strncmp(str, "click", 5) == 0) {
         cmd->type = CMD_CLICK;
@@ -131,13 +130,11 @@ static int parse_command(const char *str, struct command *cmd) {
         }
     } else if (strncmp(str, "history-back", 12) == 0) {
         cmd->type = CMD_HISTORY_BACK;
-    } else if (strncmp(str, "shell", 5) == 0 ||
-               strncmp(str, "sh", 2) == 0) {
+    } else if (strncmp(str, "shell", 5) == 0 || strncmp(str, "sh", 2) == 0) {
         cmd->type = CMD_SHELL;
         const char *arg = str + (str[2] == 'e' ? 5 : 2);
         while (isspace((unsigned char)*arg))
             arg++;
-        /* Strip surrounding quotes. */
         size_t len = strlen(arg);
         if (len >= 2 && arg[0] == '\'' && arg[len - 1] == '\'') {
             cmd->arg.shell_cmd = strndup(arg + 1, len - 2);
@@ -152,8 +149,8 @@ static int parse_command(const char *str, struct command *cmd) {
 
 /* Parse a comma-separated command chain into a binding's
  * command array. Returns the number of commands parsed. */
-static int parse_command_chain(const char *chain,
-                               struct command *cmds, int max) {
+static int parse_command_chain(const char *chain, struct command *cmds,
+                               int max) {
     char buf[1024];
     snprintf(buf, sizeof(buf), "%s", chain);
     int count = 0;
@@ -167,29 +164,24 @@ static int parse_command_chain(const char *chain,
     return count;
 }
 
-static int parse_line(struct config *cfg, const char *path,
-                      int lineno, char *line) {
-    /* Strip comments. */
+static int parse_line(struct config *cfg, const char *path, int lineno,
+                      char *line) {
     char *comment = strchr(line, '#');
     if (comment)
         *comment = '\0';
 
-    /* Trim leading whitespace. */
     while (isspace((unsigned char)*line))
         line++;
 
-    /* Skip empty lines. */
     if (*line == '\0')
         return 0;
 
-    /* "clear" resets bindings. */
     if (strcmp(line, "clear") == 0) {
         cfg->num_bindings = 0;
         log_debug("clear: reset bindings");
         return 0;
     }
 
-    /* Split into keysequence and command chain. */
     char *space = line;
     while (*space && !isspace((unsigned char)*space))
         space++;
@@ -217,8 +209,7 @@ static int parse_line(struct config *cfg, const char *path,
          * commands (e.g., grid 4x4). */
         cfg->num_start_commands = 0;
         for (int i = 1; i < ncmds; i++) {
-            cfg->start_commands[cfg->num_start_commands++] =
-                cmds[i];
+            cfg->start_commands[cfg->num_start_commands++] = cmds[i];
         }
         log_debug("start binding: %d chained commands",
                   cfg->num_start_commands);
@@ -230,8 +221,8 @@ static int parse_line(struct config *cfg, const char *path,
             if (cmds[i].type == CMD_SHELL)
                 free(cmds[i].arg.shell_cmd);
         }
-        log_warn("%s:%d: too many bindings (max %d)",
-                 path, lineno, MAX_BINDINGS);
+        log_warn("%s:%d: too many bindings (max %d)", path, lineno,
+                 MAX_BINDINGS);
         return -1;
     }
 
@@ -242,8 +233,7 @@ static int parse_line(struct config *cfg, const char *path,
     memcpy(b->commands, cmds, ncmds * sizeof(struct command));
     cfg->num_bindings++;
 
-    log_debug("bind: sym=0x%x mods=0x%x cmds=%d",
-              sym, mods, ncmds);
+    log_debug("bind: sym=0x%x mods=0x%x cmds=%d", sym, mods, ncmds);
 
     return 0;
 }
@@ -261,10 +251,8 @@ int config_load(struct config *cfg, const char *path) {
     int lineno = 0;
     while (fgets(line, sizeof(line), f)) {
         lineno++;
-        /* Strip trailing newline. */
         size_t len = strlen(line);
-        while (len > 0 &&
-               (line[len - 1] == '\n' || line[len - 1] == '\r'))
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
             line[--len] = '\0';
 
         if (parse_line(cfg, path, lineno, line) != 0)
@@ -275,11 +263,10 @@ int config_load(struct config *cfg, const char *path) {
     return 0;
 }
 
-const struct binding *config_find_binding(
-    const struct config *cfg, xkb_keysym_t sym, uint32_t mods) {
+const struct binding *config_find_binding(const struct config *cfg,
+                                          xkb_keysym_t sym, uint32_t mods) {
     for (int i = 0; i < cfg->num_bindings; i++) {
-        if (cfg->bindings[i].keysym == sym &&
-            cfg->bindings[i].mods == mods)
+        if (cfg->bindings[i].keysym == sym && cfg->bindings[i].mods == mods)
             return &cfg->bindings[i];
     }
     return NULL;

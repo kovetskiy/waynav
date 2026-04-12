@@ -1,4 +1,4 @@
-.PHONY: all build test clean install lint lint-tidy lint-scan lint-cppcheck
+.PHONY: all build test clean install fmt lint lint-tidy lint-scan lint-cppcheck
 
 BUILDDIR ?= build
 
@@ -13,6 +13,9 @@ test: build
 
 clean:
 	rm -rf $(BUILDDIR)
+
+fmt:
+	@clang-format -i src/*.c src/*.h
 
 lint: build
 	@$(MAKE) -j3 --no-print-directory lint-tidy lint-scan lint-cppcheck

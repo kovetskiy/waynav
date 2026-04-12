@@ -8,32 +8,46 @@
 #include "log.h"
 #include "waynav.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 static const char *cmd_name(enum command_type type) {
     switch (type) {
-    case CMD_START:        return "start";
-    case CMD_END:          return "end";
-    case CMD_GRID:         return "grid";
-    case CMD_CELL_SELECT:  return "cell-select";
-    case CMD_CUT_LEFT:     return "cut-left";
-    case CMD_CUT_RIGHT:    return "cut-right";
-    case CMD_CUT_UP:       return "cut-up";
-    case CMD_CUT_DOWN:     return "cut-down";
-    case CMD_MOVE_LEFT:    return "move-left";
-    case CMD_MOVE_RIGHT:   return "move-right";
-    case CMD_MOVE_UP:      return "move-up";
-    case CMD_MOVE_DOWN:    return "move-down";
-    case CMD_WARP:         return "warp";
-    case CMD_CLICK:        return "click";
-    case CMD_DRAG:         return "drag";
-    case CMD_CURSORZOOM:   return "cursorzoom";
-    case CMD_HISTORY_BACK: return "history-back";
-    case CMD_SHELL:        return "shell";
+    case CMD_START:
+        return "start";
+    case CMD_END:
+        return "end";
+    case CMD_GRID:
+        return "grid";
+    case CMD_CELL_SELECT:
+        return "cell-select";
+    case CMD_CUT_LEFT:
+        return "cut-left";
+    case CMD_CUT_RIGHT:
+        return "cut-right";
+    case CMD_CUT_UP:
+        return "cut-up";
+    case CMD_CUT_DOWN:
+        return "cut-down";
+    case CMD_MOVE_LEFT:
+        return "move-left";
+    case CMD_MOVE_RIGHT:
+        return "move-right";
+    case CMD_MOVE_UP:
+        return "move-up";
+    case CMD_MOVE_DOWN:
+        return "move-down";
+    case CMD_WARP:
+        return "warp";
+    case CMD_CLICK:
+        return "click";
+    case CMD_DRAG:
+        return "drag";
+    case CMD_CURSORZOOM:
+        return "cursorzoom";
+    case CMD_HISTORY_BACK:
+        return "history-back";
+    case CMD_SHELL:
+        return "shell";
     }
     return "?";
 }
@@ -49,10 +63,8 @@ static void run_shell(const char *cmd) {
     /* Don't wait — fire and forget like keynav. */
 }
 
-void execute_commands(struct overlay *ov,
-                      struct region_state *rs,
-                      const struct command *cmds,
-                      int ncmds) {
+void execute_commands(struct overlay *ov, struct region_state *rs,
+                      const struct command *cmds, int ncmds) {
     bool did_history_back = false;
 
     for (int i = 0; i < ncmds; i++) {
@@ -70,10 +82,8 @@ void execute_commands(struct overlay *ov,
             overlay_stop(ov);
             break;
         case CMD_GRID:
-            log_debug("grid %dx%d",
-                      c->arg.grid.cols, c->arg.grid.rows);
-            region_set_grid(rs, c->arg.grid.cols,
-                            c->arg.grid.rows);
+            log_debug("grid %dx%d", c->arg.grid.cols, c->arg.grid.rows);
+            region_set_grid(rs, c->arg.grid.cols, c->arg.grid.rows);
             break;
         case CMD_CELL_SELECT:
             log_debug("cell-select %d", c->arg.cell);
@@ -119,8 +129,8 @@ void execute_commands(struct overlay *ov,
                 rs->dragging = false;
             } else {
                 region_center(rs, &cx, &cy);
-                log_debug("drag start button=%d at %d,%d",
-                          c->arg.button, cx, cy);
+                log_debug("drag start button=%d at %d,%d", c->arg.button, cx,
+                          cy);
                 vptr_warp(ov, cx, cy);
                 vptr_button_down(ov, c->arg.button);
                 rs->dragging = true;
@@ -129,10 +139,9 @@ void execute_commands(struct overlay *ov,
             break;
         case CMD_CURSORZOOM:
             region_center(rs, &cx, &cy);
-            log_debug("cursorzoom %dx%d at %d,%d",
-                      c->arg.zoom.w, c->arg.zoom.h, cx, cy);
-            region_cursorzoom(rs, cx, cy,
-                              c->arg.zoom.w, c->arg.zoom.h);
+            log_debug("cursorzoom %dx%d at %d,%d", c->arg.zoom.w, c->arg.zoom.h,
+                      cx, cy);
+            region_cursorzoom(rs, cx, cy, c->arg.zoom.w, c->arg.zoom.h);
             break;
         case CMD_HISTORY_BACK:
             region_history_back(rs);
@@ -145,8 +154,7 @@ void execute_commands(struct overlay *ov,
         }
     }
 
-    log_debug("region: %dx%d+%d+%d",
-              rs->current.w, rs->current.h,
+    log_debug("region: %dx%d+%d+%d", rs->current.w, rs->current.h,
               rs->current.x, rs->current.y);
 
     /* After each command chain, save state and redraw.
