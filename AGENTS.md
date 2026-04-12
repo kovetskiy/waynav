@@ -39,12 +39,11 @@ subdivision parameters, a history stack, and drag state. All
 they produce the same rectangle, with no side effects outside
 the struct.
 
-Cell numbering follows keynav's scheme: left-to-right,
-top-to-bottom. For a 4×4 grid, cell 1 is top-left, cell 4 is
-bottom-left of the first column, cell 5 is top of the second
-column. The formula is column-major despite the visual layout
-looking row-major. Getting this wrong breaks all cell-select
-bindings.
+Cell numbering follows keynav's scheme: top-to-bottom within
+each column, then left-to-right across columns. For a 4×4
+grid, cell 1 is top-left, cell 4 is bottom-left of the first
+column, and cell 5 is top of the second column. Getting this
+wrong breaks all cell-select bindings.
 
 ### Config parser (config.c)
 
@@ -87,9 +86,10 @@ the config's `MOD_*` bitmask, then into `config_find_binding()`.
 
 Bridges config and region. Takes a matched binding's command
 chain and runs each command in sequence: region mutations, warp,
-click, drag, shell exec. After each chain it saves to history
-(unless the chain contained `history-back`, to avoid pushing
-the restored state right back) and requests a redraw.
+click, drag, shell exec. `end` must also release any active
+drag before the overlay exits. After each chain it saves to
+history (unless the chain contained `history-back`, to avoid
+pushing the restored state right back) and requests a redraw.
 
 Shell commands fork+exec through `/bin/sh -c` and are
 fire-and-forget — no waitpid.
@@ -143,10 +143,11 @@ when breaking would hurt readability.
 
 Tests use plain `assert()` and live in `tests/`. Each test
 binary is standalone, registered with meson's test runner.
-Grid and config are tested in isolation; the overlay is verified
-manually on a live compositor.
+Grid, config, and input dispatch are tested in isolation; the
+overlay is verified manually on a live compositor.
 
 ## Workflow
 
 Keep diffs minimal and update tests and the README in the same
 session as behavior changes.
+

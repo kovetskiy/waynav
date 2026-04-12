@@ -78,12 +78,20 @@ static region_fn region_dispatch[] = {
     [CMD_MOVE_DOWN] = region_move_down,
 };
 
+static void stop_drag(struct overlay *ov, struct region_state *rs) {
+    if (!rs->dragging)
+        return;
+
+    log_debug("drag end button=%d", rs->drag_button);
+    vptr_button_up(ov, rs->drag_button);
+    rs->dragging = false;
+    rs->drag_button = 0;
+}
+
 static void exec_drag(struct overlay *ov, struct region_state *rs,
                       const struct command *c) {
     if (rs->dragging) {
-        log_debug("drag end button=%d", rs->drag_button);
-        vptr_button_up(ov, rs->drag_button);
-        rs->dragging = false;
+        stop_drag(ov, rs);
         return;
     }
     int cx, cy;
@@ -103,9 +111,8 @@ static void exec_grid(struct overlay *ov, struct region_state *rs,
     region_set_grid(rs, c->arg.grid.cols, c->arg.grid.rows);
 }
 
-static void exec_cell_select(struct overlay *ov,
-                              struct region_state *rs,
-                              const struct command *c) {
+static void exec_cell_select(struct overlay *ov, struct region_state *rs,
+                             const struct command *c) {
     (void)ov;
     log_debug("cell-select %d", c->arg.cell);
     region_cell_select(rs, c->arg.cell);
@@ -127,14 +134,13 @@ static void exec_click(struct overlay *ov, struct region_state *rs,
     vptr_click(ov, c->arg.button);
 }
 
-static void exec_cursorzoom(struct overlay *ov,
-                             struct region_state *rs,
-                             const struct command *c) {
+static void exec_cursorzoom(struct overlay *ov, struct region_state *rs,
+                            const struct command *c) {
     (void)ov;
     int cx, cy;
     region_center(rs, &cx, &cy);
-    log_debug("cursorzoom %dx%d at %d,%d",
-              c->arg.zoom.w, c->arg.zoom.h, cx, cy);
+    log_debug("cursorzoom %dx%d at %d,%d", c->arg.zoom.w, c->arg.zoom.h, cx,
+              cy);
     region_cursorzoom(rs, cx, cy, c->arg.zoom.w, c->arg.zoom.h);
 }
 
@@ -177,6 +183,7 @@ static bool execute_one(struct overlay *ov, struct region_state *rs,
     }
 
     if (c->type == CMD_END) {
+        stop_drag(ov, rs);
         log_info("end");
         overlay_stop(ov);
     } else if (c->type == CMD_HISTORY_BACK) {
