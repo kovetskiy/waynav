@@ -209,7 +209,7 @@ static void noop() {
 static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
                             const char *iface, uint32_t version) {
     struct overlay *ov = data;
-    (void)version;
+    uint32_t layer_shell_version = version;
 
     if (strcmp(iface, wl_compositor_interface.name) == 0) {
         ov->compositor =
@@ -226,8 +226,10 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
                 wl_registry_bind(reg, name, &wl_output_interface, 3);
         }
     } else if (strcmp(iface, zwlr_layer_shell_v1_interface.name) == 0) {
-        ov->layer_shell =
-            wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, 2);
+        if (layer_shell_version > ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION)
+            layer_shell_version = ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION;
+        ov->layer_shell = wl_registry_bind(
+            reg, name, &zwlr_layer_shell_v1_interface, layer_shell_version);
     } else if (strcmp(iface, zwlr_virtual_pointer_manager_v1_interface.name) ==
                0) {
         ov->vptr_mgr = wl_registry_bind(
@@ -725,8 +727,14 @@ void overlay_destroy(struct overlay *ov) {
         zwlr_virtual_pointer_manager_v1_destroy(ov->vptr_mgr);
     if (ov->xdg_out_mgr)
         zxdg_output_manager_v1_destroy(ov->xdg_out_mgr);
-    if (ov->layer_shell)
-        zwlr_layer_shell_v1_destroy(ov->layer_shell);
+    if (ov->layer_shell) {
+        if (zwlr_layer_shell_v1_get_version(ov->layer_shell) >=
+            ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION) {
+            zwlr_layer_shell_v1_destroy(ov->layer_shell);
+        } else {
+            wl_proxy_destroy((struct wl_proxy *)ov->layer_shell);
+        }
+    }
     if (ov->seat)
         wl_seat_destroy(ov->seat);
     if (ov->wl_output)
