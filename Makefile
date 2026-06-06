@@ -1,4 +1,4 @@
-.PHONY: all build test check dist clean install fmt fmt-check lint lint-tidy lint-scan lint-cppcheck
+.PHONY: all build test int-test check dist clean install fmt fmt-check lint lint-tidy lint-scan lint-cppcheck
 
 BUILDDIR ?= build
 PREFIX ?= /usr
@@ -13,6 +13,9 @@ build:
 
 test: build
 	meson test -C $(BUILDDIR)
+
+int-test:
+	./int/run_tests
 
 check: fmt-check test lint
 
