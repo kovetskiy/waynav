@@ -1,0 +1,257 @@
+.TH WAYNAV 1 "2026-06-06" "waynav" "User Commands"
+.SH NAME
+waynav \- grid-based keyboard mouse navigation for Wayland
+.SH SYNOPSIS
+.SY waynav
+.OP \-c path
+.OP \-l level
+.OP \-v
+.OP \-h
+.YS
+.SH DESCRIPTION
+.B waynav
+is a short-lived, grid-based mouse navigator for Wayland compositors.
+It is intended to be launched by a compositor key binding.  When
+started, it creates a fullscreen overlay, grabs the keyboard, draws the
+current grid region, handles key bindings from
+.IR waynavrc ,
+and moves or clicks the pointer through the Wayland virtual-pointer
+protocol.
+.PP
+The process exits when a configured binding runs the
+.B end
+command.  There is no daemon, IPC, or saved state between invocations.
+A lock file prevents multiple instances from running at the same time.
+.PP
+waynav targets wlroots-compatible compositors and relies on
+wlr-layer-shell, wlr-virtual-pointer, wp-fractional-scale, wp-viewporter,
+and xdg-output.  It has been tested on niri.
+.SH OPTIONS
+.TP
+\fB\-c\fR \fIpath\fR, \fB\-\-config\fR \fIpath\fR
+Read configuration from
+.IR path .
+If this option is not given,
+.B waynav
+tries
+.I $XDG_CONFIG_HOME/waynav/waynavrc
+and then
+.IR ~/.config/waynav/waynavrc .
+.TP
+\fB\-l\fR \fIlevel\fR, \fB\-\-log\fR \fIlevel\fR
+Set the log level.  Valid levels are
+.BR error ,
+.BR warn ,
+.BR info ,
+and
+.BR debug .
+The default is
+.BR info .
+This option overrides
+.IR WAYNAV_LOG .
+.TP
+.B \-v, \-\-version
+Print the version and exit.
+.TP
+.B \-h, \-\-help
+Print a short usage message and exit.
+.SH CONFIGURATION
+The configuration file uses keynav-style bindings.  Blank lines are
+ignored.  A
+.B #
+character starts a comment, even inside command text.
+.PP
+The special line
+.PP
+.EX
+clear
+.EE
+.PP
+removes normal key bindings parsed so far.
+.PP
+Normal bindings have this form:
+.PP
+.EX
+keysequence command[,command...]
+.EE
+.PP
+A
+.I keysequence
+is a key name with optional modifiers separated by
+.BR + .
+Recognized modifiers are
+.BR shift ,
+.BR ctrl ,
+.BR control ,
+.BR alt ,
+and
+.BR super .
+The final token is resolved by xkbcommon, so use symbolic key names such
+as
+.BR h ,
+.BR space ,
+.BR semicolon ,
+or
+.BR Return .
+Because keysyms are resolved after modifiers are applied, shifted
+bindings should use the shifted keysym, for example
+.B shift+H
+rather than
+.BR shift+h .
+.PP
+Command chains are comma-separated and contain at most eight commands.
+The first command
+.B start
+is special: the rest of that chain is stored as startup commands and is
+run once after the overlay is created, not when a key is pressed.  The
+key sequence on a start line is kept for compatibility with keynav-style
+configuration; activation is handled by the compositor binding that
+launches
+.BR waynav .
+.SH COMMANDS
+.TP
+.B start
+Mark a startup command chain.  Only meaningful as the first command on a
+binding line.
+.TP
+.B end
+Release any active drag and exit.
+.TP
+.BI grid " n"
+Set the current grid to
+.IR n \(mu n .
+.TP
+.BI grid " cols" x rows
+Set the current grid to
+.IR cols \(mu rows .
+.TP
+.BI cell\-select " n"
+Select cell
+.I n
+from the current grid.  Cells are numbered top-to-bottom within a column,
+then left-to-right across columns.  In a 4-by-4 grid, cell 1 is the
+upper-left cell, cell 4 is the lower-left cell, and cell 5 is the top
+cell of the second column.
+.TP
+.BR cut\-left | cut\-right | cut\-up | cut\-down
+Halve the current region, keeping the named side.
+.TP
+.BR move\-left | move\-right | move\-up | move\-down
+Move the current region by one region width or height in the named
+direction.
+.TP
+.B warp
+Move the pointer to the center of the current region.
+.TP
+.BI click " button"
+Click a button.  Button numbers follow keynav: 1 is left, 2 is middle,
+3 is right, 4 scrolls up, and 5 scrolls down.
+.TP
+.BI drag " button"
+Toggle a drag with button 1, 2, or 3.  When starting a drag,
+.B waynav
+warps to the center of the current region and presses the button.  The
+next
+.B drag
+command releases it.  The
+.B end
+command also releases an active drag.
+.TP
+.BI cursorzoom " size"
+Set the current region to a
+.IR size \(mu size
+rectangle centered on the current region's center.
+.TP
+.BI cursorzoom " width height"
+Set the current region to a
+.IR width \(mu height
+rectangle centered on the current region's center.
+.TP
+.B history\-back
+Restore the previous region.
+.TP
+.BI shell " command"
+.TQ
+.BI sh " command"
+Run
+.I command
+asynchronously with
+.BR /bin/sh " " \-c .
+If the command text is wrapped in one pair of single quotes, those quotes
+are stripped before execution.  Commands are fire-and-forget; waynav does
+not wait for them to finish.
+.SH EXAMPLES
+A compositor binding for niri:
+.PP
+.EX
+Mod+semicolon { spawn "waynav"; }
+.EE
+.PP
+A small working
+.IR waynavrc :
+.PP
+.EX
+clear
+super+semicolon start,grid 2x2
+
+q cell-select 1,warp
+w cell-select 2,warp
+a cell-select 3,warp
+s cell-select 4,warp
+
+h move-left,warp
+j move-down,warp
+k move-up,warp
+l move-right,warp
+
+space warp,click 1
+BackSpace history-back
+semicolon end
+Return end
+.EE
+.SH ENVIRONMENT
+.TP
+.I WAYNAV_LOG
+Default log level when
+.B \-l
+is not used.
+.TP
+.I WAYNAV_LOG_COLOR
+Set to
+.B 1
+to force colored log output.  Set to any other value to disable color.
+If unset, color is enabled when stderr is a terminal.
+.TP
+.I XDG_CONFIG_HOME
+Base directory used to find
+.IR waynav/waynavrc .
+.TP
+.I HOME
+Fallback base directory used to find
+.IR .config/waynav/waynavrc .
+.TP
+.I XDG_RUNTIME_DIR
+Directory for
+.IR waynav.lock .
+If unset,
+.I /tmp
+is used.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/waynav/waynavrc
+Primary default configuration path.
+.TP
+.I ~/.config/waynav/waynavrc
+Fallback default configuration path.
+.TP
+.I $XDG_RUNTIME_DIR/waynav.lock
+Lock file used to avoid concurrent instances.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit, help or version output, or another instance already running.
+.TP
+.B 1
+Configuration, overlay setup, or runtime error.
+.SH SEE ALSO
+.BR keynav (1)

@@ -54,6 +54,8 @@ executable(
   install: true,
 )
 
+install_man('doc/waynav.1')
+
 # Tests
 grid_test = executable(
   'test_grid',
