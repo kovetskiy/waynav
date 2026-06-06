@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# @file int/run_tests
+# @brief Run waynav Docker integration tests.
+# @description
+#   Bootstraps the Ancient shell test harness and runs the Docker-backed
+#   compositor smoke testcases under int/testcases.
+
+set -euo pipefail
+
+INT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+readonly INT_DIR
+REPO_DIR=$(cd -- "$INT_DIR/.." && pwd)
+readonly REPO_DIR
+
+readonly DEFAULT_DOCKER=${DOCKER:-docker}
+readonly DEFAULT_SWAY_IMAGE='waynav-sway:bookworm'
+readonly DEFAULT_NIRI_IMAGE='waynav-niri:arch'
+readonly DEFAULT_SWAY_CONTAINER='waynav-sway-int'
+readonly DEFAULT_NIRI_CONTAINER='waynav-niri-int'
+readonly DEFAULT_SWAY_BUILD_DIR='build-docker'
+readonly DEFAULT_NIRI_BUILD_DIR='build-niri-docker'
+readonly DEFAULT_SOCKET_TIMEOUT='20'
+readonly DEFAULT_READY_TIMEOUT='10'
+readonly DEFAULT_EXIT_TIMEOUT='5'
+
+:usage() {
+	cat <<EOF
+Usage:
+    int/run_tests [options]
+    int/run_tests [options] -O <testcase-pattern>
+
+Harness options:
+    -A                       Run all testcases. This is the default.
+    -O PATTERN               Run testcases whose path matches PATTERN.
+    -v                       Increase harness verbosity. Repeat for more logs.
+    -h, --help               Show this help.
+
+Docker options:
+    --docker PATH            Docker-compatible CLI to use.
+                             Default: ${DEFAULT_DOCKER}
+    --sway-image NAME        Sway image tag.
+                             Default: ${DEFAULT_SWAY_IMAGE}
+    --niri-image NAME        niri image tag.
+                             Default: ${DEFAULT_NIRI_IMAGE}
+    --sway-container NAME    Sway compositor container name.
+                             Default: ${DEFAULT_SWAY_CONTAINER}
+    --niri-container NAME    niri smoke container name.
+                             Default: ${DEFAULT_NIRI_CONTAINER}
+    --sway-build-dir DIR     Meson build directory for the Sway image.
+                             Default: ${DEFAULT_SWAY_BUILD_DIR}
+    --niri-build-dir DIR     Meson build directory for the niri image.
+                             Default: ${DEFAULT_NIRI_BUILD_DIR}
+    --socket-timeout SEC     Seconds to wait for compositor sockets.
+                             Default: ${DEFAULT_SOCKET_TIMEOUT}
+    --ready-timeout SEC      Seconds to wait for waynav overlay readiness.
+                             Default: ${DEFAULT_READY_TIMEOUT}
+    --exit-timeout SEC       Seconds to wait for waynav to exit.
+                             Default: ${DEFAULT_EXIT_TIMEOUT}
+    --skip-image-build       Reuse existing Docker images.
+    --skip-unit-tests        Build waynav, but do not run Meson unit tests.
+    --keep-container         Leave compositor containers after test completion.
+EOF
+}
+
+:maybe-show-help() {
+	local arg=''
+
+	for arg in "$@"; do
+		case "$arg" in
+		-h | --help)
+			:usage
+			exit 0
+			;;
+		esac
+	done
+}
+
+:import:use-vendor() {
+	local vendor_name=${1:-}
+	local module_name=${vendor_name##*/}
+	local module_path="$REPO_DIR/vendor/$vendor_name/$module_name"
+
+	if [[ -z $vendor_name ]]; then
+		printf 'import:use: missing module name\n' >&2
+		return 1
+	fi
+
+	if [[ ! -f $module_path ]]; then
+		printf "can't import '%s': %s not found\n" \
+			"$vendor_name" "$module_path" >&2
+		return 1
+	fi
+
+	# shellcheck source=/dev/null
+	source "$module_path"
+}
+
+:load-harness() {
+	# shellcheck source=vendor/github.com/reconquest/import.bash/import.bash
+	source "$REPO_DIR/vendor/github.com/reconquest/import.bash/import.bash"
+
+	import:use() {
+		:import:use-vendor "$@"
+	}
+
+	import:use github.com/reconquest/test-runner.bash
+}
+
+:export-defaults() {
+	export WAYNAV_INT_DIR=$INT_DIR
+	export WAYNAV_INT_ROOT_DIR=$REPO_DIR
+	export WAYNAV_INT_DOCKER=$DEFAULT_DOCKER
+	export WAYNAV_INT_SWAY_IMAGE=$DEFAULT_SWAY_IMAGE
+	export WAYNAV_INT_NIRI_IMAGE=$DEFAULT_NIRI_IMAGE
+	export WAYNAV_INT_SWAY_CONTAINER=$DEFAULT_SWAY_CONTAINER
+	export WAYNAV_INT_NIRI_CONTAINER=$DEFAULT_NIRI_CONTAINER
+	export WAYNAV_INT_SWAY_BUILD_DIR=$DEFAULT_SWAY_BUILD_DIR
+	export WAYNAV_INT_NIRI_BUILD_DIR=$DEFAULT_NIRI_BUILD_DIR
+	export WAYNAV_INT_SOCKET_TIMEOUT=$DEFAULT_SOCKET_TIMEOUT
+	export WAYNAV_INT_READY_TIMEOUT=$DEFAULT_READY_TIMEOUT
+	export WAYNAV_INT_EXIT_TIMEOUT=$DEFAULT_EXIT_TIMEOUT
+	export WAYNAV_INT_BUILD_IMAGE=1
+	export WAYNAV_INT_RUN_UNIT_TESTS=1
+	export WAYNAV_INT_KEEP_CONTAINER=0
+}
+
+:handle-custom-opt() {
+	local name=$1
+	local value=$2
+
+	case "$name" in
+	--docker)
+		export WAYNAV_INT_DOCKER=$value
+		;;
+	--sway-image)
+		export WAYNAV_INT_SWAY_IMAGE=$value
+		;;
+	--niri-image)
+		export WAYNAV_INT_NIRI_IMAGE=$value
+		;;
+	--sway-container)
+		export WAYNAV_INT_SWAY_CONTAINER=$value
+		;;
+	--niri-container)
+		export WAYNAV_INT_NIRI_CONTAINER=$value
+		;;
+	--sway-build-dir)
+		export WAYNAV_INT_SWAY_BUILD_DIR=$value
+		;;
+	--niri-build-dir)
+		export WAYNAV_INT_NIRI_BUILD_DIR=$value
+		;;
+	--socket-timeout)
+		export WAYNAV_INT_SOCKET_TIMEOUT=$value
+		;;
+	--ready-timeout)
+		export WAYNAV_INT_READY_TIMEOUT=$value
+		;;
+	--exit-timeout)
+		export WAYNAV_INT_EXIT_TIMEOUT=$value
+		;;
+	--skip-image-build)
+		export WAYNAV_INT_BUILD_IMAGE=0
+		;;
+	--skip-unit-tests)
+		export WAYNAV_INT_RUN_UNIT_TESTS=0
+		;;
+	--keep-container)
+		export WAYNAV_INT_KEEP_CONTAINER=1
+		;;
+	*)
+		printf 'unexpected custom option: %s\n' "$name" >&2
+		return 1
+		;;
+	esac
+}
+
+:main() {
+	:maybe-show-help "$@"
+	:export-defaults
+	:load-harness
+
+	test-runner:handle-custom-opt() {
+		:handle-custom-opt "$@"
+	}
+
+	test-runner:set-custom-opts \
+		--docker: \
+		--sway-image: \
+		--niri-image: \
+		--sway-container: \
+		--niri-container: \
+		--sway-build-dir: \
+		--niri-build-dir: \
+		--socket-timeout: \
+		--ready-timeout: \
+		--exit-timeout: \
+		--skip-image-build \
+		--skip-unit-tests \
+		--keep-container
+	test-runner:set-local-setup setup.sh
+	test-runner:set-local-teardown teardown.sh
+	test-runner:set-testcases-dir testcases
+
+	cd "$INT_DIR"
+	test-runner:run "$@"
+}
+
+:main "$@"
