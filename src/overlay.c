@@ -684,6 +684,18 @@ fail:
     return NULL;
 }
 
+static void destroy_layer_shell(struct zwlr_layer_shell_v1 *layer_shell) {
+    if (!layer_shell)
+        return;
+
+    if (zwlr_layer_shell_v1_get_version(layer_shell) >=
+        ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION) {
+        zwlr_layer_shell_v1_destroy(layer_shell);
+    } else {
+        wl_proxy_destroy((struct wl_proxy *)layer_shell);
+    }
+}
+
 void overlay_destroy(struct overlay *ov) {
     if (!ov)
         return;
@@ -727,14 +739,7 @@ void overlay_destroy(struct overlay *ov) {
         zwlr_virtual_pointer_manager_v1_destroy(ov->vptr_mgr);
     if (ov->xdg_out_mgr)
         zxdg_output_manager_v1_destroy(ov->xdg_out_mgr);
-    if (ov->layer_shell) {
-        if (zwlr_layer_shell_v1_get_version(ov->layer_shell) >=
-            ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION) {
-            zwlr_layer_shell_v1_destroy(ov->layer_shell);
-        } else {
-            wl_proxy_destroy((struct wl_proxy *)ov->layer_shell);
-        }
-    }
+    destroy_layer_shell(ov->layer_shell);
     if (ov->seat)
         wl_seat_destroy(ov->seat);
     if (ov->wl_output)
