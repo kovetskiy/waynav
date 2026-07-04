@@ -202,7 +202,7 @@ EOF
 	test-runner:set-local-teardown teardown.sh
 	test-runner:set-testcases-dir testcases
 
-	cd "$INT_DIR"
+	cd "$INT_DIR" || exit 1
 	test-runner:run "$@"
 }
 

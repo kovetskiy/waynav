@@ -82,11 +82,22 @@ static const struct {
 
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 
+/* If str starts with keyword followed by a non-alphabetic boundary,
+ * return a pointer just past the keyword; otherwise NULL. The boundary
+ * guard stops "click" from matching "clicker".
+ */
+static const char *match_keyword(const char *str, const char *keyword) {
+    size_t len = strlen(keyword);
+    if (strncmp(str, keyword, len) == 0 && !isalpha((unsigned char)str[len]))
+        return str + len;
+    return NULL;
+}
+
 static bool try_simple_command(const char *str, struct command *cmd) {
     for (size_t i = 0; i < ARRAY_LEN(simple_commands); i++) {
         const char *name = simple_commands[i].name;
-        size_t len = strlen(name);
-        if (strncmp(str, name, len) == 0 && !isalpha((unsigned char)str[len])) {
+        const char *args = match_keyword(str, name);
+        if (args) {
             cmd->type = simple_commands[i].type;
             return true;
         }
@@ -94,16 +105,16 @@ static bool try_simple_command(const char *str, struct command *cmd) {
     return false;
 }
 
-static int parse_shell(const char *str, struct command *cmd) {
+/* Parse the argument following a "shell"/"sh" keyword. */
+static int parse_shell(const char *args, struct command *cmd) {
     cmd->type = CMD_SHELL;
-    const char *arg = str + (str[2] == 'e' ? 5 : 2);
-    while (isspace((unsigned char)*arg))
-        arg++;
-    size_t len = strlen(arg);
-    if (len >= 2 && arg[0] == '\'' && arg[len - 1] == '\'') {
-        cmd->arg.shell_cmd = strndup(arg + 1, len - 2);
+    while (isspace((unsigned char)*args))
+        args++;
+    size_t len = strlen(args);
+    if (len >= 2 && args[0] == '\'' && args[len - 1] == '\'') {
+        cmd->arg.shell_cmd = strndup(args + 1, len - 2);
     } else {
-        cmd->arg.shell_cmd = strdup(arg);
+        cmd->arg.shell_cmd = strdup(args);
     }
     return 0;
 }
@@ -117,39 +128,42 @@ static int parse_command(const char *str, struct command *cmd) {
     if (try_simple_command(str, cmd))
         return 0;
 
-    if (strncmp(str, "grid", 4) == 0 && !isalpha((unsigned char)str[4])) {
+    const char *args;
+
+    if ((args = match_keyword(str, "grid"))) {
         cmd->type = CMD_GRID;
         int cols = 0, rows = 0;
-        if (sscanf(str + 4, " %dx%d", &cols, &rows) == 2) {
+        if (sscanf(args, " %dx%d", &cols, &rows) == 2) {
             cmd->arg.grid.cols = cols;
             cmd->arg.grid.rows = rows;
         } else {
-            int n = atoi(str + 5);
+            int n = atoi(args);
             cmd->arg.grid.cols = n;
             cmd->arg.grid.rows = n;
         }
-    } else if (strncmp(str, "cell-select", 11) == 0) {
+    } else if ((args = match_keyword(str, "cell-select"))) {
         cmd->type = CMD_CELL_SELECT;
-        cmd->arg.cell = atoi(str + 11);
-    } else if (strncmp(str, "click", 5) == 0) {
+        cmd->arg.cell = atoi(args);
+    } else if ((args = match_keyword(str, "click"))) {
         cmd->type = CMD_CLICK;
-        cmd->arg.button = atoi(str + 5);
-    } else if (strncmp(str, "drag", 4) == 0) {
+        cmd->arg.button = atoi(args);
+    } else if ((args = match_keyword(str, "drag"))) {
         cmd->type = CMD_DRAG;
-        cmd->arg.button = atoi(str + 4);
-    } else if (strncmp(str, "cursorzoom", 10) == 0) {
+        cmd->arg.button = atoi(args);
+    } else if ((args = match_keyword(str, "cursorzoom"))) {
         cmd->type = CMD_CURSORZOOM;
         int w = 0, h = 0;
-        if (sscanf(str + 10, " %d %d", &w, &h) == 2) {
+        if (sscanf(args, " %d %d", &w, &h) == 2) {
             cmd->arg.zoom.w = w;
             cmd->arg.zoom.h = h;
         } else {
-            int s = atoi(str + 10);
+            int s = atoi(args);
             cmd->arg.zoom.w = s;
             cmd->arg.zoom.h = s;
         }
-    } else if (strncmp(str, "shell", 5) == 0 || strncmp(str, "sh", 2) == 0) {
-        return parse_shell(str, cmd);
+    } else if ((args = match_keyword(str, "shell")) ||
+               (args = match_keyword(str, "sh"))) {
+        return parse_shell(args, cmd);
     } else {
         return -1;
     }

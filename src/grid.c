@@ -53,8 +53,8 @@ void region_cell_select(struct region_state *rs, int cell) {
         return;
 
     /* keynav numbering: top-to-bottom within a column, then
-     * left-to-right across columns.
-     * col = ceil(cell / rows), row = cell % rows (or rows if 0). */
+     * left-to-right across columns. Cells are 1-based, so the
+     * column and row are derived from cell - 1. */
     int col = (cell - 1) / rows;
     int row = (cell - 1) % rows;
 

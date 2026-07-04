@@ -128,10 +128,13 @@ EOF
 }
 
 :cleanup-process() {
-	local pid=$1
+	local name=$1
+	local pid=$2
+	local signal=${3:-TERM}
 
 	if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
-		kill -INT "$pid" 2>/dev/null || true
+		:log "stopping $name"
+		kill "-$signal" "$pid" 2>/dev/null || true
 		wait "$pid" 2>/dev/null || true
 	fi
 }
@@ -140,7 +143,7 @@ EOF
 	local status=$?
 	local pid=$1
 
-	:cleanup-process "$pid"
+	:cleanup-process waynav "$pid" INT
 	exit "$status"
 }
 
@@ -257,7 +260,7 @@ EOF
 	wtype ';'
 
 	if ! :wait-process-exit "$pid" "$exit_timeout"; then
-		:cleanup-process "$pid"
+		:cleanup-process waynav "$pid" INT
 		:print-file 'waynav stdout' "$out_file"
 		:print-file 'waynav log' "$log_file"
 		:error 'waynav did not exit after semicolon'

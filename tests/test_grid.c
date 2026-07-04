@@ -135,9 +135,9 @@ static void test_center(void) {
 
 static void test_cell_select_matches_keynav(void) {
     /* Verify cell numbering matches keynav's scheme.
-     * In a 4x4 grid (4 cols, 4 rows), keynav numbers:
-     *   col = ceil(cell / rows)
-     *   row = cell % rows (or rows if 0)
+     * In a 4x4 grid (4 cols, 4 rows), keynav numbers cells 1-based:
+     *   col = (cell - 1) / rows
+     *   row = (cell - 1) % rows
      *
      * Cell  1: col=0, row=0
      * Cell  2: col=0, row=1

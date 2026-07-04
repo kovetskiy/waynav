@@ -129,6 +129,33 @@ waynav:int:start-sway() {
 	printf '[int] Sway container started: %s\n' "$container_id" >&2
 }
 
+# @description Probe once for a socket inside a running container.
+# @internal
+# @arg $1 string Container name.
+# @arg $2 string Socket path inside the container.
+:waynav:int:probe-container-socket() {
+	local container_name=$1
+	local socket_path=$2
+
+	tests:eval "$WAYNAV_INT_DOCKER" exec "$container_name" \
+		test -S "$socket_path"
+}
+
+# @description Fail a container-socket wait with an explicit assertion.
+# @internal
+# @arg $1 string Container name.
+# @arg $2 string Failure reason.
+# @stderr Failure reason and container logs.
+:waynav:int:fail-container-socket() {
+	local container_name=$1
+	local reason=$2
+
+	printf '[int] %s: %s\n' "$reason" "$container_name" >&2
+	waynav:int:print-container-logs "$container_name"
+	tests:eval false
+	tests:assert-success
+}
+
 # @description Assert that a socket exists inside a running container.
 # @arg $1 string Container name.
 # @arg $2 string Socket path inside the container.
@@ -144,19 +171,17 @@ waynav:int:assert-container-socket() {
 	printf '[int] waiting for socket in %s: %s\n' \
 		"$container_name" "$socket_path" >&2
 	while ((elapsed < WAYNAV_INT_SOCKET_TIMEOUT)); do
-		tests:eval "$WAYNAV_INT_DOCKER" exec "$container_name" \
-			test -S "$socket_path"
+		# The socket lives inside the container, so tests.sh's host-side
+		# file-wait helpers cannot reach it; poll through docker exec.
+		:waynav:int:probe-container-socket "$container_name" "$socket_path"
 		if [[ $(tests:get-exitcode) == 0 ]]; then
 			tests:assert-success
 			return 0
 		fi
 
 		if ! :waynav:int:container-running "$container_name"; then
-			printf '[int] container exited before socket appeared: %s\n' \
-				"$container_name" >&2
-			waynav:int:print-container-logs "$container_name"
-			tests:eval false
-			tests:assert-success
+			:waynav:int:fail-container-socket \
+				"$container_name" 'container exited before socket appeared'
 			return 88
 		fi
 
@@ -164,10 +189,9 @@ waynav:int:assert-container-socket() {
 		((elapsed += 1))
 	done
 
-	printf '[int] socket did not appear in %s: %s\n' \
-		"$container_name" "$socket_path" >&2
-	waynav:int:print-container-logs "$container_name"
-	tests:assert-success
+	:waynav:int:fail-container-socket \
+		"$container_name" 'socket did not appear'
+	return 88
 }
 
 # @description Run the waynav overlay smoke script in the Sway container.

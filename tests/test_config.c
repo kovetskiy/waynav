@@ -176,12 +176,38 @@ static void test_drag(void) {
     unlink(path);
 }
 
+static void test_rejects_command_prefix_extension(void) {
+    /* A command whose name merely extends a real keyword (clicker,
+     * dragon) must not be mis-parsed as that keyword. The chain then
+     * yields no commands, so the binding is dropped. */
+    const char *path = "/tmp/waynav_test_config_prefix";
+    write_tmp_config(
+        "clear\n"
+        "x clicker 1\n"
+        "y dragon 2\n"
+        "z click 1\n",
+        path
+    );
+
+    struct config cfg;
+    assert(config_load(&cfg, path) == 0);
+
+    /* Only the well-formed "click" binding survives. */
+    assert(cfg.num_bindings == 1);
+    const struct binding *b = config_find_binding(&cfg, XKB_KEY_z, 0);
+    assert(b);
+    assert(b->commands[0].type == CMD_CLICK);
+    assert(b->commands[0].arg.button == 1);
+
+    unlink(path);
+}
 int main(void) {
     test_basic_parse();
     test_cell_select();
     test_shell_command();
     test_cursorzoom();
     test_drag();
+    test_rejects_command_prefix_extension();
 
     printf("All config tests passed.\n");
     return 0;

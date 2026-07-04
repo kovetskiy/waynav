@@ -55,6 +55,10 @@ static const char *cmd_name(enum command_type type) {
 static void run_shell(const char *cmd) {
     log_debug("shell: %s", cmd);
     pid_t pid = fork();
+    if (pid < 0) {
+        log_warn("shell: fork failed");
+        return;
+    }
     if (pid == 0) {
         const char *argv[] = {"/bin/sh", "-c", cmd, NULL};
         execvp(argv[0], (char *const *)argv);

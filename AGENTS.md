@@ -15,7 +15,8 @@ prevents concurrent instances.
 
 ```
 make          # build (runs meson setup on first call)
-make test     # build + run tests
+make test     # build + run unit tests
+make int-test # run Docker-backed integration tests (host only)
 make lint     # clang-tidy + scan-build + cppcheck in parallel
 make clean    # wipe build dir
 ```
@@ -59,6 +60,16 @@ Key names are resolved through xkbcommon's
 (like `semicolon` or `Return`), not physical scancodes. Shifted
 bindings must use the shifted keysym — `shift+H` not `shift+h`
 — because xkb resolves the keysym after applying modifiers.
+
+Command keyword dispatch goes through `match_keyword` in
+config.c. It matches a keyword prefix and guards that the next
+character is not alphabetic, so `click` does not silently match
+`clicker`. Argument pointers are derived as
+`str + strlen(keyword)`, never a hard-coded offset, so a keyword
+rename cannot desynchronize the argument parse. Every command
+form — simple, parameterized, and shell — routes through this
+one helper; adding a bare `strncmp` check elsewhere reintroduces
+the prefix-collision bug.
 
 ### Overlay (overlay.c)
 
@@ -135,16 +146,31 @@ when disabled. Keep info-level sparse: startup, activation, exit.
 
 ## Writing style
 
-Load the `writing-tropes` skill before writing prose or
-AGENTS.md updates. Wrap lines at 80 columns. Code can exceed 80
-when breaking would hurt readability.
+Wrap prose at 80 columns. Code can exceed 80 when breaking
+would hurt readability.
 
 ## Tests
 
-Tests use plain `assert()` and live in `tests/`. Each test
+Unit tests use plain `assert()` and live in `tests/`. Each test
 binary is standalone, registered with meson's test runner.
 Grid, config, and input dispatch are tested in isolation; the
 overlay is verified manually on a live compositor.
+
+### Integration tests
+
+`make int-test` (or `./int/run_tests`) runs the Docker-backed
+harness under `int/`. It builds compositor images (Sway, niri),
+starts containers, and drives waynav through a real compositor
+via the smoke scripts in `int/lib/`. It needs Docker and a Linux
+host — it is not part of `make test` and does not run in CI. The
+harness uses the `test-runner.bash`/`tests.sh` stack vendored
+under `vendor/github.com/reconquest/`.
+
+Make failure assertions explicit: call `tests:eval false` before
+`tests:assert-success` rather than relying on `tests:eval` state
+left over from a prior loop iteration. Helpers shared across the
+smoke scripts (`:cleanup-process`, `:cleanup-all`) must keep
+matching signatures.
 
 ## Workflow
 
