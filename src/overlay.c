@@ -535,9 +535,10 @@ static void render_grid(struct overlay *ov, cairo_t *cr,
     int h = rs->current.h;
     int cols = rs->current.grid_cols;
     int rows = rs->current.grid_rows;
+    double line_width = ov->cfg ? ov->cfg->line_width : DEFAULT_LINE_WIDTH;
 
     cairo_set_source_rgba(cr, 0.4, 0.6, 1.0, 0.5);
-    cairo_set_line_width(cr, 1.0);
+    cairo_set_line_width(cr, line_width);
     cairo_rectangle(cr, x + 0.5, y + 0.5, w - 1, h - 1);
     cairo_stroke(cr);
 

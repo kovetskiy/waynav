@@ -69,6 +69,16 @@ clear
 .PP
 removes normal key bindings parsed so far.
 .PP
+The line
+.PP
+.EX
+line-width 3
+.EE
+.PP
+sets the overlay grid line width.  The value must be greater than zero.
+The default is
+.BR 1.0 .
+.PP
 Normal bindings have this form:
 .PP
 .EX
@@ -192,6 +202,7 @@ A small working
 .PP
 .EX
 clear
+line-width 3
 super+semicolon start,grid 2x2
 
 q cell-select 1,warp

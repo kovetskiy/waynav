@@ -31,6 +31,7 @@ static void test_basic_parse(void) {
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
+    assert(cfg.line_width == DEFAULT_LINE_WIDTH);
 
     /* start binding is stored separately. */
     assert(cfg.num_start_commands == 1);
@@ -69,6 +70,40 @@ static void test_basic_parse(void) {
     assert(b);
     assert(b->num_commands == 1);
     assert(b->commands[0].type == CMD_END);
+
+    unlink(path);
+}
+
+static void test_line_width(void) {
+    const char *path = "/tmp/waynav_test_config_line_width";
+    write_tmp_config(
+        "clear\n"
+        "line-width 3.5\n"
+        "semicolon end\n",
+        path
+    );
+
+    struct config cfg;
+    assert(config_load(&cfg, path) == 0);
+    assert(cfg.line_width == 3.5);
+    assert(cfg.num_bindings == 1);
+
+    unlink(path);
+}
+
+static void test_invalid_line_width_keeps_default(void) {
+    const char *path = "/tmp/waynav_test_config_invalid_line_width";
+    write_tmp_config(
+        "clear\n"
+        "line-width 0\n"
+        "semicolon end\n",
+        path
+    );
+
+    struct config cfg;
+    assert(config_load(&cfg, path) == 0);
+    assert(cfg.line_width == DEFAULT_LINE_WIDTH);
+    assert(cfg.num_bindings == 1);
 
     unlink(path);
 }
@@ -182,6 +217,8 @@ int main(void) {
     test_shell_command();
     test_cursorzoom();
     test_drag();
+    test_line_width();
+    test_invalid_line_width_keeps_default();
 
     printf("All config tests passed.\n");
     return 0;

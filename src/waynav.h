@@ -56,6 +56,7 @@ void region_center(const struct region_state *rs, int *x, int *y);
 
 #define MAX_COMMANDS 8
 #define MAX_BINDINGS 64
+#define DEFAULT_LINE_WIDTH 1.0
 
 enum command_type {
     CMD_START,
@@ -110,6 +111,7 @@ struct binding {
 struct config {
     struct binding bindings[MAX_BINDINGS];
     int num_bindings;
+    double line_width;
     /* The start binding's chained commands (grid setup etc.) */
     struct command start_commands[MAX_COMMANDS];
     int num_start_commands;

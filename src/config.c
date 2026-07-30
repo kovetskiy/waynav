@@ -223,6 +223,20 @@ static int parse_line(struct config *cfg, const char *path, int lineno,
         return 0;
     }
 
+    if (strncmp(line, "line-width", 10) == 0 &&
+        isspace((unsigned char)line[10])) {
+        double line_width = 0.0;
+        char extra = '\0';
+        if (sscanf(line + 10, " %lf %c", &line_width, &extra) != 1 ||
+            line_width <= 0.0) {
+            log_warn("%s:%d: invalid line-width", path, lineno);
+            return -1;
+        }
+        cfg->line_width = line_width;
+        log_debug("line-width: %.2f", cfg->line_width);
+        return 0;
+    }
+
     char *space = line;
     while (*space && !isspace((unsigned char)*space))
         space++;
@@ -261,6 +275,7 @@ int config_load(struct config *cfg, const char *path) {
     }
 
     memset(cfg, 0, sizeof(*cfg));
+    cfg->line_width = DEFAULT_LINE_WIDTH;
 
     char line[1024];
     int lineno = 0;
