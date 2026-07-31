@@ -528,11 +528,9 @@ static void send_frame(struct overlay *ov) {
 /* Set the cairo source to a packed 0xRRGGBBAA color, scaling each
  * channel to cairo's 0..1 range. */
 static void set_source_color(cairo_t *cr, uint32_t packed) {
-    cairo_set_source_rgba(cr,
-        ((packed >> 24) & 0xff) / 255.0,
-        ((packed >> 16) & 0xff) / 255.0,
-        ((packed >>  8) & 0xff) / 255.0,
-        (packed & 0xff) / 255.0);
+    cairo_set_source_rgba(
+        cr, ((packed >> 24) & 0xff) / 255.0, ((packed >> 16) & 0xff) / 255.0,
+        ((packed >> 8) & 0xff) / 255.0, (packed & 0xff) / 255.0);
 }
 
 static void render_grid(struct overlay *ov, cairo_t *cr,
@@ -544,13 +542,23 @@ static void render_grid(struct overlay *ov, cairo_t *cr,
     int cols = rs->current.grid_cols;
     int rows = rs->current.grid_rows;
 
+    if (w <= 0 || h <= 0)
+        return;
+
+    double line_width = ov->cfg->line_width;
+    int line_width_max = w < h ? w : h;
+    if (line_width > line_width_max)
+        line_width = line_width_max;
+    double line_inset = line_width / 2.0;
+
     set_source_color(cr, ov->cfg->region_bg);
     cairo_rectangle(cr, x, y, w, h);
     cairo_fill(cr);
 
-    cairo_set_line_width(cr, ov->cfg->line_width);
+    cairo_set_line_width(cr, line_width);
     set_source_color(cr, ov->cfg->grid_color);
-    cairo_rectangle(cr, x + 0.5, y + 0.5, w - 1, h - 1);
+    cairo_rectangle(cr, x + line_inset, y + line_inset, w - line_width,
+                    h - line_width);
     cairo_stroke(cr);
 
     for (int c = 1; c < cols; c++) {

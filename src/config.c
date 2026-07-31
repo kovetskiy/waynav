@@ -9,6 +9,7 @@
 #include "waynav.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -219,9 +220,12 @@ static int store_binding(struct config *cfg, const char *path, int lineno,
     return 0;
 }
 static int hex_digit_value(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
     return -1;
 }
 
@@ -267,8 +271,7 @@ static int parse_hex_color(const char *str, uint32_t *color) {
 /* If line is "<keyword> <hex>", parse the color into *out and
  * return true; otherwise return false and leave *out untouched. */
 static bool try_color_directive(const char *line, const char *keyword,
-                                const char *path, int lineno,
-                                uint32_t *out) {
+                                const char *path, int lineno, uint32_t *out) {
     const char *args = match_keyword(line, keyword);
     if (!args)
         return false;
@@ -277,6 +280,23 @@ static bool try_color_directive(const char *line, const char *keyword,
         *out = parsed;
     else
         log_warn("%s:%d: invalid %s value", path, lineno, keyword);
+    return true;
+}
+
+static bool try_line_width_directive(const char *line, const char *path,
+                                     int lineno, double *out) {
+    const char *args = match_keyword(line, "line-width");
+    if (!args || !isspace((unsigned char)*args))
+        return false;
+
+    double parsed = 0.0;
+    char extra = '\0';
+    if (sscanf(args, " %lf %c", &parsed, &extra) == 1 && isfinite(parsed) &&
+        parsed > 0.0) {
+        *out = parsed;
+    } else {
+        log_warn("%s:%d: invalid line-width", path, lineno);
+    }
     return true;
 }
 
@@ -300,20 +320,11 @@ static int parse_line(struct config *cfg, const char *path, int lineno,
 
     if (try_color_directive(line, "grid-color", path, lineno,
                             &cfg->grid_color) ||
-        try_color_directive(line, "region-bg", path, lineno,
-                            &cfg->region_bg))
+        try_color_directive(line, "region-bg", path, lineno, &cfg->region_bg))
         return 0;
 
-    const char *width_args = match_keyword(line, "line-width");
-    if (width_args) {
-        char *end;
-        double width = strtod(width_args, &end);
-        if (end != width_args && width > 0)
-            cfg->line_width = width;
-        else
-            log_warn("%s:%d: invalid line-width", path, lineno);
+    if (try_line_width_directive(line, path, lineno, &cfg->line_width))
         return 0;
-    }
 
     char *space = line;
     while (*space && !isspace((unsigned char)*space))

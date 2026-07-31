@@ -107,8 +107,8 @@ struct binding {
 #define MOD_ALT (1 << 2)
 #define MOD_SUPER (1 << 3)
 
-#define GRID_COLOR_DEFAULT      0x6699ff80u
-#define REGION_BG_DEFAULT       0x00000000u
+#define GRID_COLOR_DEFAULT 0x6699ff80u
+#define REGION_BG_DEFAULT 0x00000000u
 #define GRID_LINE_WIDTH_DEFAULT 1.0
 
 struct config {

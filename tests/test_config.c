@@ -19,15 +19,13 @@ static void write_tmp_config(const char *content, const char *path) {
 
 static void test_basic_parse(void) {
     const char *path = "/tmp/waynav_test_config";
-    write_tmp_config(
-        "clear\n"
-        "super+semicolon start,grid 4x4\n"
-        "h move-left,warp\n"
-        "shift+h cut-left,warp\n"
-        "space warp,click 1\n"
-        "semicolon end\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "super+semicolon start,grid 4x4\n"
+                     "h move-left,warp\n"
+                     "shift+h cut-left,warp\n"
+                     "space warp,click 1\n"
+                     "semicolon end\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
@@ -43,8 +41,7 @@ static void test_basic_parse(void) {
     assert(cfg.num_bindings == 4);
 
     /* h -> move-left, warp */
-    const struct binding *b = config_find_binding(
-        &cfg, XKB_KEY_h, 0);
+    const struct binding *b = config_find_binding(&cfg, XKB_KEY_h, 0);
     assert(b);
     assert(b->num_commands == 2);
     assert(b->commands[0].type == CMD_MOVE_LEFT);
@@ -76,12 +73,10 @@ static void test_basic_parse(void) {
 
 static void test_line_width(void) {
     const char *path = "/tmp/waynav_test_config_line_width";
-    write_tmp_config(
-        "clear\n"
-        "line-width 3.5\n"
-        "semicolon end\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "line-width 3.5\n"
+                     "semicolon end\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
@@ -91,18 +86,22 @@ static void test_line_width(void) {
     unlink(path);
 }
 
-static void test_invalid_line_width_keeps_default(void) {
+static void test_invalid_line_width_keeps_previous_value(void) {
     const char *path = "/tmp/waynav_test_config_invalid_line_width";
-    write_tmp_config(
-        "clear\n"
-        "line-width 0\n"
-        "semicolon end\n",
-        path
-    );
+    write_tmp_config("line-width 2.5\n"
+                     "line-width 0\n"
+                     "line-width -1\n"
+                     "line-width nan\n"
+                     "line-width inf\n"
+                     "line-width 1e309\n"
+                     "line-width 3px\n"
+                     "line-width2\n"
+                     "semicolon end\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
-    assert(cfg.line_width == GRID_LINE_WIDTH_DEFAULT);
+    assert(cfg.line_width == 2.5);
     assert(cfg.num_bindings == 1);
 
     unlink(path);
@@ -110,19 +109,16 @@ static void test_invalid_line_width_keeps_default(void) {
 
 static void test_cell_select(void) {
     const char *path = "/tmp/waynav_test_config2";
-    write_tmp_config(
-        "clear\n"
-        "1 cell-select 1,warp\n"
-        "v cell-select 16,warp\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "1 cell-select 1,warp\n"
+                     "v cell-select 16,warp\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
     assert(cfg.num_bindings == 2);
 
-    const struct binding *b = config_find_binding(
-        &cfg, XKB_KEY_1, 0);
+    const struct binding *b = config_find_binding(&cfg, XKB_KEY_1, 0);
     assert(b);
     assert(b->commands[0].type == CMD_CELL_SELECT);
     assert(b->commands[0].arg.cell == 1);
@@ -137,22 +133,18 @@ static void test_cell_select(void) {
 
 static void test_shell_command(void) {
     const char *path = "/tmp/waynav_test_config3";
-    write_tmp_config(
-        "clear\n"
-        "grave shell 'notify deprecated'\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "grave shell 'notify deprecated'\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
     assert(cfg.num_bindings == 1);
 
-    const struct binding *b = config_find_binding(
-        &cfg, XKB_KEY_grave, 0);
+    const struct binding *b = config_find_binding(&cfg, XKB_KEY_grave, 0);
     assert(b);
     assert(b->commands[0].type == CMD_SHELL);
-    assert(strcmp(b->commands[0].arg.shell_cmd,
-                 "notify deprecated") == 0);
+    assert(strcmp(b->commands[0].arg.shell_cmd, "notify deprecated") == 0);
 
     free(b->commands[0].arg.shell_cmd);
     unlink(path);
@@ -160,18 +152,15 @@ static void test_shell_command(void) {
 
 static void test_cursorzoom(void) {
     const char *path = "/tmp/waynav_test_config4";
-    write_tmp_config(
-        "clear\n"
-        "i grid 1x1,cursorzoom 10 10\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "i grid 1x1,cursorzoom 10 10\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
     assert(cfg.num_bindings == 1);
 
-    const struct binding *b = config_find_binding(
-        &cfg, XKB_KEY_i, 0);
+    const struct binding *b = config_find_binding(&cfg, XKB_KEY_i, 0);
     assert(b);
     assert(b->num_commands == 2);
     assert(b->commands[0].type == CMD_GRID);
@@ -186,19 +175,17 @@ static void test_cursorzoom(void) {
 
 static void test_drag(void) {
     const char *path = "/tmp/waynav_test_config5";
-    write_tmp_config(
-        "clear\n"
-        "shift+space warp,drag 1\n"
-        "shift+minus warp,drag 3\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "shift+space warp,drag 1\n"
+                     "shift+minus warp,drag 3\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
     assert(cfg.num_bindings == 2);
 
-    const struct binding *b = config_find_binding(
-        &cfg, XKB_KEY_space, MOD_SHIFT);
+    const struct binding *b =
+        config_find_binding(&cfg, XKB_KEY_space, MOD_SHIFT);
     assert(b);
     assert(b->commands[1].type == CMD_DRAG);
     assert(b->commands[1].arg.button == 1);
@@ -216,13 +203,11 @@ static void test_rejects_command_prefix_extension(void) {
      * dragon) must not be mis-parsed as that keyword. The chain then
      * yields no commands, so the binding is dropped. */
     const char *path = "/tmp/waynav_test_config_prefix";
-    write_tmp_config(
-        "clear\n"
-        "x clicker 1\n"
-        "y dragon 2\n"
-        "z click 1\n",
-        path
-    );
+    write_tmp_config("clear\n"
+                     "x clicker 1\n"
+                     "y dragon 2\n"
+                     "z click 1\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
@@ -239,14 +224,12 @@ static void test_rejects_command_prefix_extension(void) {
 
 static void test_colors(void) {
     const char *path = "/tmp/waynav_test_config_colors";
-    write_tmp_config(
-        "grid-color ff0000\n"
-        "region-bg 11223344\n"
-        "grid-color abc        # shorthand re-sets grid_color\n"
-        "line-width 2.5\n"
-        "grid-color nope       # malformed: leaves prior value\n",
-        path
-    );
+    write_tmp_config("grid-color ff0000\n"
+                     "region-bg 11223344\n"
+                     "grid-color abc        # shorthand re-sets grid_color\n"
+                     "line-width 2.5\n"
+                     "grid-color nope       # malformed: leaves prior value\n",
+                     path);
 
     struct config cfg;
     assert(config_load(&cfg, path) == 0);
@@ -276,7 +259,7 @@ static void test_color_defaults(void) {
 int main(void) {
     test_basic_parse();
     test_line_width();
-    test_invalid_line_width_keeps_default();
+    test_invalid_line_width_keeps_previous_value();
     test_cell_select();
     test_shell_command();
     test_cursorzoom();
