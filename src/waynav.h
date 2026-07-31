@@ -107,12 +107,21 @@ struct binding {
 #define MOD_ALT (1 << 2)
 #define MOD_SUPER (1 << 3)
 
+#define GRID_COLOR_DEFAULT      0x6699ff80u
+#define REGION_BG_DEFAULT       0x00000000u
+#define GRID_LINE_WIDTH_DEFAULT 1.0
+
 struct config {
     struct binding bindings[MAX_BINDINGS];
     int num_bindings;
     /* The start binding's chained commands (grid setup etc.) */
     struct command start_commands[MAX_COMMANDS];
     int num_start_commands;
+    /* Appearance. Colors are packed 0xRRGGBBAA and are seeded
+     * from the GRID_*_DEFAULT constants in config_load. */
+    uint32_t grid_color;
+    uint32_t region_bg;
+    double line_width;
 };
 
 /* Parse a waynavrc file into cfg. Returns 0 on success,

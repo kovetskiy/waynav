@@ -218,6 +218,67 @@ static int store_binding(struct config *cfg, const char *path, int lineno,
     log_debug("bind: sym=0x%x mods=0x%x cmds=%d", sym, mods, ncmds);
     return 0;
 }
+static int hex_digit_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* Parse "rgb", "rrggbb", or "rrggbbaa" (bare hex, since a '#' would
+ * start a comment) into a packed 0xRRGGBBAA color. A missing alpha
+ * channel defaults to fully opaque (0xff). Returns 0 on success, -1
+ * on a malformed value. */
+static int parse_hex_color(const char *str, uint32_t *color) {
+    while (isspace((unsigned char)*str))
+        str++;
+
+    uint32_t packed = 0;
+    int digit_count = 0;
+    int digit;
+    while ((digit = hex_digit_value(str[digit_count])) >= 0) {
+        if (digit_count >= 8)
+            return -1;
+        packed = (packed << 4) | (uint32_t)digit;
+        digit_count++;
+    }
+
+    char terminator = str[digit_count];
+    if (digit_count == 0 ||
+        (terminator != '\0' && !isspace((unsigned char)terminator)))
+        return -1;
+    if (digit_count != 3 && digit_count != 6 && digit_count != 8)
+        return -1;
+
+    if (digit_count == 3) {
+        /* CSS shorthand: each nibble doubles, so #abc -> #aabbcc. */
+        uint32_t r = (packed >> 8) & 0xf;
+        uint32_t g = (packed >> 4) & 0xf;
+        uint32_t b = packed & 0xf;
+        packed = (r << 4 | r) << 16 | (g << 4 | g) << 8 | (b << 4 | b);
+    }
+    if (digit_count == 3 || digit_count == 6)
+        packed = (packed << 8) | 0xffu;
+
+    *color = packed;
+    return 0;
+}
+
+/* If line is "<keyword> <hex>", parse the color into *out and
+ * return true; otherwise return false and leave *out untouched. */
+static bool try_color_directive(const char *line, const char *keyword,
+                                const char *path, int lineno,
+                                uint32_t *out) {
+    const char *args = match_keyword(line, keyword);
+    if (!args)
+        return false;
+    uint32_t parsed;
+    if (parse_hex_color(args, &parsed) == 0)
+        *out = parsed;
+    else
+        log_warn("%s:%d: invalid %s value", path, lineno, keyword);
+    return true;
+}
 
 static int parse_line(struct config *cfg, const char *path, int lineno,
                       char *line) {
@@ -234,6 +295,23 @@ static int parse_line(struct config *cfg, const char *path, int lineno,
     if (strcmp(line, "clear") == 0) {
         cfg->num_bindings = 0;
         log_debug("clear: reset bindings");
+        return 0;
+    }
+
+    if (try_color_directive(line, "grid-color", path, lineno,
+                            &cfg->grid_color) ||
+        try_color_directive(line, "region-bg", path, lineno,
+                            &cfg->region_bg))
+        return 0;
+
+    const char *width_args = match_keyword(line, "line-width");
+    if (width_args) {
+        char *end;
+        double width = strtod(width_args, &end);
+        if (end != width_args && width > 0)
+            cfg->line_width = width;
+        else
+            log_warn("%s:%d: invalid line-width", path, lineno);
         return 0;
     }
 
@@ -275,6 +353,9 @@ int config_load(struct config *cfg, const char *path) {
     }
 
     memset(cfg, 0, sizeof(*cfg));
+    cfg->grid_color = GRID_COLOR_DEFAULT;
+    cfg->region_bg = REGION_BG_DEFAULT;
+    cfg->line_width = GRID_LINE_WIDTH_DEFAULT;
 
     char line[1024];
     int lineno = 0;

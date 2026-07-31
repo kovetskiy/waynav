@@ -69,6 +69,32 @@ clear
 .PP
 removes normal key bindings parsed so far.
 .PP
+Three directives style the overlay; a later occurrence overwrites
+an earlier one. Colors are bare hex (
+.IR rgb ,
+.IR rrggbb ,
+or
+.IR rrggbbaa ;
+the
+.B #
+prefix is omitted because it starts a comment) and a missing alpha
+channel is fully opaque.
+.TP
+.B grid-color
+.I color
+Color of the grid lines and region border. Default:
+.IR 6699ff80 .
+.TP
+.B region-bg
+.I color
+Fill color of the active region. Default:
+.IR 00000000
+(no fill).
+.TP
+.B line-width
+.I pixels
+Grid line thickness in pixels. Default: 1.
+.PP
 Normal bindings have this form:
 .PP
 .EX

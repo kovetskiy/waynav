@@ -201,6 +201,43 @@ static void test_rejects_command_prefix_extension(void) {
 
     unlink(path);
 }
+
+static void test_colors(void) {
+    const char *path = "/tmp/waynav_test_config_colors";
+    write_tmp_config(
+        "grid-color ff0000\n"
+        "region-bg 11223344\n"
+        "grid-color abc        # shorthand re-sets grid_color\n"
+        "line-width 2.5\n"
+        "grid-color nope       # malformed: leaves prior value\n",
+        path
+    );
+
+    struct config cfg;
+    assert(config_load(&cfg, path) == 0);
+
+    /* ff0000 is overwritten by valid shorthand abc -> aabbccff;
+     * the malformed value after it is rejected and changes nothing. */
+    assert(cfg.grid_color == 0xaabbccff);
+    assert(cfg.region_bg == 0x11223344);
+    assert(cfg.line_width == 2.5);
+
+    unlink(path);
+}
+
+static void test_color_defaults(void) {
+    const char *path = "/tmp/waynav_test_config_defaults";
+    write_tmp_config("clear\n", path);
+
+    struct config cfg;
+    assert(config_load(&cfg, path) == 0);
+    assert(cfg.grid_color == GRID_COLOR_DEFAULT);
+    assert(cfg.region_bg == REGION_BG_DEFAULT);
+    assert(cfg.line_width == GRID_LINE_WIDTH_DEFAULT);
+
+    unlink(path);
+}
+
 int main(void) {
     test_basic_parse();
     test_cell_select();
@@ -208,6 +245,8 @@ int main(void) {
     test_cursorzoom();
     test_drag();
     test_rejects_command_prefix_extension();
+    test_colors();
+    test_color_defaults();
 
     printf("All config tests passed.\n");
     return 0;

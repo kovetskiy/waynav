@@ -92,6 +92,19 @@ not the key sequence on the `start` line.
   `cursorzoom`, shell commands, and history undo
 - handles fractional scale and key repeat
 
+## Appearance
+
+Three optional directives style the overlay. A later occurrence
+overwrites an earlier one. Colors are bare hex (`rgb`, `rrggbb`, or
+`rrggbbaa`); the `#` prefix is omitted because `#` starts a comment.
+A missing alpha channel is fully opaque.
+
+```text
+grid-color 6699ff80   # grid lines and border (default)
+region-bg  00000000   # fill of the active region (default: none)
+line-width 1.5        # grid line thickness in pixels (default: 1)
+```
+
 ## Requirements
 
 waynav targets wlroots-compatible compositors. It currently relies on:
