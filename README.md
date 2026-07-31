@@ -60,6 +60,7 @@ A small working config:
 
 ```text
 clear
+line-width 3
 super+semicolon start,grid 2x2
 
 q cell-select 1,warp
@@ -81,7 +82,8 @@ Return end
 The config syntax follows keynav closely. The `start` line is kept for
 keynav-style compatibility and provides startup commands such as the
 initial grid size. The actual activation key is your compositor hotkey,
-not the key sequence on the `start` line.
+not the key sequence on the `start` line. Use `line-width <number>` to
+set the overlay grid line width; the default is `1.0`.
 
 ## What it does
 

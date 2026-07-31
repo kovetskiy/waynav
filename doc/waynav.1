@@ -93,7 +93,8 @@ Fill color of the active region. Default:
 .TP
 .B line-width
 .I pixels
-Grid line thickness in pixels. Default: 1.
+Grid line thickness in pixels.  The value must be greater than zero.
+Default: 1.
 .PP
 Normal bindings have this form:
 .PP
@@ -218,6 +219,7 @@ A small working
 .PP
 .EX
 clear
+line-width 3
 super+semicolon start,grid 2x2
 
 q cell-select 1,warp
