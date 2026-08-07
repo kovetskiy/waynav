@@ -176,8 +176,14 @@ struct overlay {
     struct wl_region *input_region;
     struct zwlr_virtual_pointer_v1 *vptr;
 
-    /* Keyboard / xkb */
+    /* Input */
     struct wl_keyboard *keyboard;
+    struct wl_pointer *pointer;
+    int cursor_x;
+    int cursor_y;
+    bool cursor_position_known;
+
+    /* Keyboard / xkb */
     struct xkb_context *xkb_ctx;
     struct xkb_keymap *xkb_keymap;
     struct xkb_state *xkb_state;
@@ -600,12 +606,54 @@ static const struct wl_keyboard_listener kbd_listener = {
     .repeat_info = kbd_repeat_info,
 };
 
+static void save_cursor_position(struct overlay *ov, wl_fixed_t surface_x,
+                                 wl_fixed_t surface_y) {
+    ov->cursor_x = wl_fixed_to_int(surface_x);
+    ov->cursor_y = wl_fixed_to_int(surface_y);
+    ov->cursor_position_known = true;
+    log_debug("pointer at %d,%d", ov->cursor_x, ov->cursor_y);
+}
+
+static void pointer_enter(void *data, struct wl_pointer *pointer,
+                          uint32_t serial, struct wl_surface *surface,
+                          wl_fixed_t surface_x, wl_fixed_t surface_y) {
+    (void)pointer;
+    (void)serial;
+    struct overlay *ov = data;
+    if (surface == ov->surface)
+        save_cursor_position(ov, surface_x, surface_y);
+}
+
+static void pointer_motion(void *data, struct wl_pointer *pointer,
+                           uint32_t time, wl_fixed_t surface_x,
+                           wl_fixed_t surface_y) {
+    (void)pointer;
+    (void)time;
+    save_cursor_position(data, surface_x, surface_y);
+}
+
+static const struct wl_pointer_listener pointer_listener = {
+    .enter = pointer_enter,
+    .leave = noop,
+    .motion = pointer_motion,
+    .button = noop,
+    .axis = noop,
+    .frame = noop,
+    .axis_source = noop,
+    .axis_stop = noop,
+    .axis_discrete = noop,
+};
+
 static void seat_caps(void *data, struct wl_seat *s, uint32_t caps) {
     (void)s;
     struct overlay *ov = data;
     if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !ov->keyboard) {
         ov->keyboard = wl_seat_get_keyboard(ov->seat);
         wl_keyboard_add_listener(ov->keyboard, &kbd_listener, ov);
+    }
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !ov->pointer) {
+        ov->pointer = wl_seat_get_pointer(ov->seat);
+        wl_pointer_add_listener(ov->pointer, &pointer_listener, ov);
     }
 }
 
@@ -935,6 +983,8 @@ void overlay_destroy(struct overlay *ov) {
 
     if (ov->keyboard)
         wl_keyboard_destroy(ov->keyboard);
+    if (ov->pointer)
+        wl_pointer_destroy(ov->pointer);
     if (ov->xkb_state)
         xkb_state_unref(ov->xkb_state);
     if (ov->xkb_keymap)
@@ -997,6 +1047,33 @@ int overlay_get_height(const struct overlay *ov) {
     if (ov->selected_output)
         return ov->selected_output->height;
     return 0;
+}
+
+bool overlay_get_cursor_position(struct overlay *ov, int *x, int *y) {
+    if (!ov || !x || !y)
+        return false;
+
+    if (!ov->cursor_position_known && ov->pointer && ov->surface) {
+        /* Wayland has no global pointer-position query. Give the overlay
+         * pointer focus briefly so wl_pointer.enter supplies it. */
+        wl_surface_set_input_region(ov->surface, NULL);
+        wl_surface_commit(ov->surface);
+        int capture_result = wl_display_roundtrip(ov->display);
+
+        wl_surface_set_input_region(ov->surface, ov->input_region);
+        wl_surface_commit(ov->surface);
+        int restore_result = wl_display_roundtrip(ov->display);
+
+        if (capture_result < 0 || restore_result < 0)
+            return false;
+    }
+
+    if (!ov->cursor_position_known)
+        return false;
+
+    *x = ov->cursor_x;
+    *y = ov->cursor_y;
+    return true;
 }
 
 void overlay_stop(struct overlay *ov) {
@@ -1068,6 +1145,9 @@ void vptr_warp(struct overlay *ov, int x, int y) {
     zwlr_virtual_pointer_v1_motion_absolute(ov->vptr, 0, (uint32_t)x,
                                             (uint32_t)y, ow, oh);
     zwlr_virtual_pointer_v1_frame(ov->vptr);
+    ov->cursor_x = x;
+    ov->cursor_y = y;
+    ov->cursor_position_known = true;
     wl_display_roundtrip(ov->display);
 }
 

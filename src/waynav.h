@@ -150,6 +150,9 @@ void overlay_redraw(struct overlay *ov, struct region_state *rs);
 int overlay_get_width(const struct overlay *ov);
 int overlay_get_height(const struct overlay *ov);
 
+/* Return the pointer position in logical surface coordinates. */
+bool overlay_get_cursor_position(struct overlay *ov, int *x, int *y);
+
 /* Run the event loop. Blocks until CMD_END or error. */
 int overlay_run(struct overlay *ov, struct config *cfg,
                 struct region_state *rs);

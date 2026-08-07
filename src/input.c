@@ -135,12 +135,16 @@ static void exec_click(struct overlay *ov, struct region_state *rs,
 
 static void exec_cursorzoom(struct overlay *ov, struct region_state *rs,
                             const struct command *c) {
-    (void)ov;
-    int cx, cy;
-    region_center(rs, &cx, &cy);
-    log_debug("cursorzoom %dx%d at %d,%d", c->arg.zoom.w, c->arg.zoom.h, cx,
-              cy);
-    region_cursorzoom(rs, cx, cy, c->arg.zoom.w, c->arg.zoom.h);
+    int cursor_x;
+    int cursor_y;
+    if (!overlay_get_cursor_position(ov, &cursor_x, &cursor_y)) {
+        log_warn("cursorzoom: pointer position unavailable");
+        region_center(rs, &cursor_x, &cursor_y);
+    }
+
+    log_debug("cursorzoom %dx%d at %d,%d", c->arg.zoom.w, c->arg.zoom.h,
+              cursor_x, cursor_y);
+    region_cursorzoom(rs, cursor_x, cursor_y, c->arg.zoom.w, c->arg.zoom.h);
 }
 
 static void exec_shell(struct overlay *ov, struct region_state *rs,

@@ -24,6 +24,10 @@ struct overlay {
     int click_calls;
     int button_down_calls;
     int button_up_calls;
+    int cursor_position_calls;
+    int cursor_x;
+    int cursor_y;
+    bool cursor_position_known;
     int last_warp_x;
     int last_warp_y;
     int last_click_button;
@@ -49,6 +53,15 @@ void overlay_stop(struct overlay *ov) {
     record_event(ov, EVENT_STOP);
 }
 
+bool overlay_get_cursor_position(struct overlay *ov, int *x, int *y) {
+    ov->cursor_position_calls++;
+    if (!ov->cursor_position_known)
+        return false;
+    *x = ov->cursor_x;
+    *y = ov->cursor_y;
+    return true;
+}
+
 void vptr_warp(struct overlay *ov, int x, int y) {
     ov->warp_calls++;
     ov->last_warp_x = x;
@@ -72,6 +85,37 @@ void vptr_button_up(struct overlay *ov, int button) {
     ov->button_up_calls++;
     ov->last_button_up = button;
     record_event(ov, EVENT_BUTTON_UP);
+}
+
+static void test_cursorzoom_uses_pointer_position(void) {
+    struct overlay ov;
+    memset(&ov, 0, sizeof(ov));
+    ov.cursor_x = 123;
+    ov.cursor_y = 456;
+    ov.cursor_position_known = true;
+
+    struct region_state rs;
+    region_init(&rs, 800, 600);
+
+    struct command commands[] = {
+        {
+            .type = CMD_GRID,
+            .arg.grid = {.cols = 1, .rows = 1},
+        },
+        {
+            .type = CMD_CURSORZOOM,
+            .arg.zoom = {.w = 10, .h = 20},
+        },
+    };
+    execute_commands(&ov, &rs, commands, 2);
+
+    assert(ov.cursor_position_calls == 1);
+    assert(rs.current.x == 118);
+    assert(rs.current.y == 446);
+    assert(rs.current.w == 10);
+    assert(rs.current.h == 20);
+    assert(rs.current.grid_cols == 1);
+    assert(rs.current.grid_rows == 1);
 }
 
 static void test_end_releases_active_drag(void) {
@@ -135,6 +179,7 @@ static void test_end_without_drag_does_not_release_button(void) {
 }
 
 int main(void) {
+    test_cursorzoom_uses_pointer_position();
     test_end_releases_active_drag();
     test_end_without_drag_does_not_release_button();
 

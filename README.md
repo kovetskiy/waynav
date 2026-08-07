@@ -82,8 +82,10 @@ Return end
 The config syntax follows keynav closely. The `start` line is kept for
 keynav-style compatibility and provides startup commands such as the
 initial grid size. The actual activation key is your compositor hotkey,
-not the key sequence on the `start` line. Use `line-width <number>` to
-set the overlay grid line width; the default is `1.0`.
+not the key sequence on the `start` line. `cursorzoom` centers its new region
+on the current pointer position, including before waynav has moved the pointer.
+Use `line-width <number>` to set the overlay grid line width; the default is
+`1.0`.
 
 ## What it does
 
