@@ -93,6 +93,7 @@ set the overlay grid line width; the default is `1.0`.
 - supports region movement, cuts, cell selection, drag, scroll,
   `cursorzoom`, shell commands, and history undo
 - handles fractional scale and key repeat
+- opens on the compositor-selected active output in multi-output layouts
 
 ## Appearance
 

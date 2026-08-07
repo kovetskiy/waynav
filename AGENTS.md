@@ -28,9 +28,10 @@ each can also run alone (`make lint-tidy`, `make lint-scan`,
 
 ## Architecture
 
-Three subsystems with clean boundaries. The grid model and config
+Four subsystems with clean boundaries. The grid model and config
 parser have zero Wayland dependencies and are tested in isolation.
-The overlay owns all Wayland state and is tested manually.
+The overlay owns all Wayland state and is exercised against real
+compositors in integration tests.
 
 ### Region model (grid.c)
 
@@ -82,6 +83,11 @@ The overlay creates a fullscreen transparent surface on the
 Overlay layer with exclusive keyboard interactivity. Its input
 region is set to empty (0×0) so mouse events pass through to
 windows underneath — only the keyboard is captured.
+
+The layer-shell output is intentionally left unset so the compositor
+chooses it from the current focus policy. Treat `wl_surface.enter` as
+the source of truth and bind the virtual pointer to that same output;
+the overlay and pointer must share one logical coordinate space.
 
 Rendering uses cairo into double-buffered wl_shm buffers.
 Fractional scaling works by rendering at `buffer_size × scale`

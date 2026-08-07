@@ -53,6 +53,19 @@ struct buffer_pool {
     struct shm_buffer bufs[2];
 };
 
+struct output {
+    uint32_t global_name;
+    struct wl_output *wl_output;
+    struct zxdg_output_v1 *xdg_output;
+    int32_t width;
+    int32_t height;
+    int32_t x;
+    int32_t y;
+    int32_t scale;
+    char *name;
+    struct output *next;
+};
+
 static int create_shm_file(size_t size) {
     char name[] = "/tmp/waynav-shm-XXXXXX";
     int fd = mkostemp(name, O_CLOEXEC);
@@ -148,7 +161,6 @@ struct overlay {
     struct wl_compositor *compositor;
     struct wl_shm *shm;
     struct wl_seat *seat;
-    struct wl_output *wl_output;
     struct zwlr_layer_shell_v1 *layer_shell;
     struct zwlr_virtual_pointer_manager_v1 *vptr_mgr;
     struct zxdg_output_manager_v1 *xdg_out_mgr;
@@ -170,12 +182,9 @@ struct overlay {
     struct xkb_keymap *xkb_keymap;
     struct xkb_state *xkb_state;
 
-    /* Output info */
-    int32_t out_width;
-    int32_t out_height;
-    int32_t out_x;
-    int32_t out_y;
-    int32_t out_scale;    /* integer scale */
+    /* Outputs */
+    struct output *outputs;
+    struct output *selected_output;
     int32_t frac_scale_v; /* scale*120, 0 if unavailable */
 
     /* Surface */
@@ -206,80 +215,37 @@ static uint32_t xkb_mods_to_config(struct overlay *ov);
 static void noop() {
 }
 
-static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
-                            const char *iface, uint32_t version) {
-    struct overlay *ov = data;
-    uint32_t layer_shell_version = version;
-
-    if (strcmp(iface, wl_compositor_interface.name) == 0) {
-        ov->compositor =
-            wl_registry_bind(reg, name, &wl_compositor_interface, 4);
-    } else if (strcmp(iface, wl_shm_interface.name) == 0) {
-        ov->shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
-    } else if (strcmp(iface, wl_seat_interface.name) == 0) {
-        if (!ov->seat) {
-            ov->seat = wl_registry_bind(reg, name, &wl_seat_interface, 7);
-        }
-    } else if (strcmp(iface, wl_output_interface.name) == 0) {
-        if (!ov->wl_output) {
-            ov->wl_output =
-                wl_registry_bind(reg, name, &wl_output_interface, 3);
-        }
-    } else if (strcmp(iface, zwlr_layer_shell_v1_interface.name) == 0) {
-        if (layer_shell_version > ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION)
-            layer_shell_version = ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION;
-        ov->layer_shell = wl_registry_bind(
-            reg, name, &zwlr_layer_shell_v1_interface, layer_shell_version);
-    } else if (strcmp(iface, zwlr_virtual_pointer_manager_v1_interface.name) ==
-               0) {
-        ov->vptr_mgr = wl_registry_bind(
-            reg, name, &zwlr_virtual_pointer_manager_v1_interface, 2);
-    } else if (strcmp(iface, zxdg_output_manager_v1_interface.name) == 0) {
-        ov->xdg_out_mgr =
-            wl_registry_bind(reg, name, &zxdg_output_manager_v1_interface, 2);
-    } else if (strcmp(iface, wp_viewporter_interface.name) == 0) {
-        ov->viewporter =
-            wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
-    } else if (strcmp(iface, wp_fractional_scale_manager_v1_interface.name) ==
-               0) {
-        ov->frac_scale_mgr = wl_registry_bind(
-            reg, name, &wp_fractional_scale_manager_v1_interface, 1);
-    }
+static uint32_t negotiated_version(uint32_t advertised_version,
+                                   uint32_t supported_version) {
+    if (advertised_version < supported_version)
+        return advertised_version;
+    return supported_version;
 }
 
-static const struct wl_registry_listener registry_listener = {
-    .global = registry_global,
-    .global_remove = noop,
-};
-
-static void xdg_out_pos(void *data, struct zxdg_output_v1 *xdg_out, int32_t x,
-                        int32_t y) {
-    (void)xdg_out;
-    struct overlay *ov = data;
-    ov->out_x = x;
-    ov->out_y = y;
+static const char *output_name_or_unknown(const struct output *output) {
+    return output->name ? output->name : "<unknown>";
 }
 
-static void xdg_out_size(void *data, struct zxdg_output_v1 *xdg_out, int32_t w,
-                         int32_t h) {
-    (void)xdg_out;
-    struct overlay *ov = data;
-    ov->out_width = w;
-    ov->out_height = h;
+static void set_output_name(struct output *output, const char *name) {
+    char *copy = strdup(name);
+    if (!copy)
+        return;
+
+    free(output->name);
+    output->name = copy;
 }
 
-static const struct zxdg_output_v1_listener xdg_out_listener = {
-    .logical_position = xdg_out_pos,
-    .logical_size = xdg_out_size,
-    .done = noop,
-    .name = noop,
-    .description = noop,
-};
+static void output_scale(void *data, struct wl_output *wl_output,
+                         int32_t factor) {
+    (void)wl_output;
+    struct output *output = data;
+    output->scale = factor;
+}
 
-static void output_scale(void *data, struct wl_output *output, int32_t factor) {
-    (void)output;
-    struct overlay *ov = data;
-    ov->out_scale = factor;
+static void output_name(void *data, struct wl_output *wl_output,
+                        const char *name) {
+    (void)wl_output;
+    set_output_name(data, name);
 }
 
 static const struct wl_output_listener output_listener = {
@@ -287,8 +253,192 @@ static const struct wl_output_listener output_listener = {
     .mode = noop,
     .done = noop,
     .scale = output_scale,
-    .name = noop,
+    .name = output_name,
     .description = noop,
+};
+
+static void xdg_output_logical_position(void *data,
+                                        struct zxdg_output_v1 *xdg_output,
+                                        int32_t x, int32_t y) {
+    (void)xdg_output;
+    struct output *output = data;
+    output->x = x;
+    output->y = y;
+}
+
+static void xdg_output_logical_size(void *data,
+                                    struct zxdg_output_v1 *xdg_output,
+                                    int32_t width, int32_t height) {
+    (void)xdg_output;
+    struct output *output = data;
+    output->width = width;
+    output->height = height;
+}
+
+static void xdg_output_name(void *data, struct zxdg_output_v1 *xdg_output,
+                            const char *name) {
+    (void)xdg_output;
+    set_output_name(data, name);
+}
+
+static const struct zxdg_output_v1_listener xdg_output_listener = {
+    .logical_position = xdg_output_logical_position,
+    .logical_size = xdg_output_logical_size,
+    .done = noop,
+    .name = xdg_output_name,
+    .description = noop,
+};
+
+static void create_xdg_output(struct overlay *ov, struct output *output) {
+    if (!ov->xdg_out_mgr || output->xdg_output)
+        return;
+
+    output->xdg_output = zxdg_output_manager_v1_get_xdg_output(
+        ov->xdg_out_mgr, output->wl_output);
+    zxdg_output_v1_add_listener(output->xdg_output, &xdg_output_listener,
+                                output);
+}
+
+static void create_xdg_outputs(struct overlay *ov) {
+    for (struct output *output = ov->outputs; output; output = output->next)
+        create_xdg_output(ov, output);
+}
+
+static void output_destroy(struct output *output) {
+    if (output->xdg_output)
+        zxdg_output_v1_destroy(output->xdg_output);
+    wl_output_destroy(output->wl_output);
+    free(output->name);
+    free(output);
+}
+
+static void bind_output(struct overlay *ov, struct wl_registry *registry,
+                        uint32_t name, uint32_t version) {
+    struct output *output = calloc(1, sizeof(*output));
+    if (!output) {
+        log_err("failed to allocate wl_output");
+        return;
+    }
+
+    output->global_name = name;
+    output->scale = 1;
+    output->wl_output = wl_registry_bind(registry, name, &wl_output_interface,
+                                         negotiated_version(version, 4));
+    wl_output_add_listener(output->wl_output, &output_listener, output);
+    output->next = ov->outputs;
+    ov->outputs = output;
+    create_xdg_output(ov, output);
+}
+
+static void registry_global(void *data, struct wl_registry *registry,
+                            uint32_t name, const char *interface,
+                            uint32_t version) {
+    struct overlay *ov = data;
+
+    if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        ov->compositor =
+            wl_registry_bind(registry, name, &wl_compositor_interface,
+                             negotiated_version(version, 4));
+    } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+        ov->shm = wl_registry_bind(registry, name, &wl_shm_interface,
+                                   negotiated_version(version, 1));
+    } else if (strcmp(interface, wl_seat_interface.name) == 0) {
+        if (!ov->seat) {
+            ov->seat = wl_registry_bind(registry, name, &wl_seat_interface,
+                                        negotiated_version(version, 7));
+        }
+    } else if (strcmp(interface, wl_output_interface.name) == 0) {
+        bind_output(ov, registry, name, version);
+    } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
+        uint32_t layer_shell_version = version;
+        if (layer_shell_version > ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION)
+            layer_shell_version = ZWLR_LAYER_SHELL_V1_DESTROY_SINCE_VERSION;
+        ov->layer_shell =
+            wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface,
+                             layer_shell_version);
+    } else if (strcmp(interface,
+                      zwlr_virtual_pointer_manager_v1_interface.name) == 0) {
+        ov->vptr_mgr = wl_registry_bind(
+            registry, name, &zwlr_virtual_pointer_manager_v1_interface,
+            negotiated_version(version, 2));
+    } else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
+        ov->xdg_out_mgr =
+            wl_registry_bind(registry, name, &zxdg_output_manager_v1_interface,
+                             negotiated_version(version, 2));
+        create_xdg_outputs(ov);
+    } else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
+        ov->viewporter =
+            wl_registry_bind(registry, name, &wp_viewporter_interface,
+                             negotiated_version(version, 1));
+    } else if (strcmp(interface,
+                      wp_fractional_scale_manager_v1_interface.name) == 0) {
+        ov->frac_scale_mgr = wl_registry_bind(
+            registry, name, &wp_fractional_scale_manager_v1_interface,
+            negotiated_version(version, 1));
+    }
+}
+
+static void registry_global_remove(void *data, struct wl_registry *registry,
+                                   uint32_t name) {
+    (void)registry;
+    struct overlay *ov = data;
+    struct output **link = &ov->outputs;
+
+    while (*link) {
+        struct output *output = *link;
+        if (output->global_name == name) {
+            *link = output->next;
+            if (ov->selected_output == output)
+                ov->selected_output = NULL;
+            output_destroy(output);
+            return;
+        }
+        link = &output->next;
+    }
+}
+
+static const struct wl_registry_listener registry_listener = {
+    .global = registry_global,
+    .global_remove = registry_global_remove,
+};
+
+static struct output *find_output(const struct overlay *ov,
+                                  const struct wl_output *wl_output) {
+    for (struct output *output = ov->outputs; output; output = output->next) {
+        if (output->wl_output == wl_output)
+            return output;
+    }
+    return NULL;
+}
+
+static void surface_enter(void *data, struct wl_surface *surface,
+                          struct wl_output *wl_output) {
+    (void)surface;
+    struct overlay *ov = data;
+    struct output *output = find_output(ov, wl_output);
+    if (!output) {
+        log_warn("surface entered an unknown output");
+        return;
+    }
+
+    ov->selected_output = output;
+    log_debug("surface entered output %s: %dx%d+%d+%d scale=%d",
+              output_name_or_unknown(output), output->width, output->height,
+              output->x, output->y, output->scale);
+}
+
+static void surface_leave(void *data, struct wl_surface *surface,
+                          struct wl_output *wl_output) {
+    (void)surface;
+    struct overlay *ov = data;
+    if (ov->selected_output && ov->selected_output->wl_output == wl_output) {
+        ov->selected_output = NULL;
+    }
+}
+
+static const struct wl_surface_listener surface_listener = {
+    .enter = surface_enter,
+    .leave = surface_leave,
 };
 
 static void layer_configure(void *data, struct zwlr_layer_surface_v1 *ls,
@@ -488,35 +638,22 @@ static uint32_t xkb_mods_to_config(struct overlay *ov) {
 static int32_t get_scale_120(struct overlay *ov) {
     if (ov->frac_scale_v > 0)
         return ov->frac_scale_v;
-    int32_t s = ov->out_scale > 0 ? ov->out_scale : 1;
-    return s * 120;
+    if (ov->selected_output && ov->selected_output->scale > 0)
+        return ov->selected_output->scale * 120;
+    return 120;
 }
 
-static void send_frame(struct overlay *ov) {
-    if (!ov->configured || !ov->rs)
-        return;
+static void clear_buffer(struct shm_buffer *buffer) {
+    cairo_identity_matrix(buffer->cr);
+    cairo_set_operator(buffer->cr, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_rgba(buffer->cr, 0, 0, 0, 0);
+    cairo_paint(buffer->cr);
+}
 
-    int32_t scale_120 = get_scale_120(ov);
-    uint32_t bw = ov->surf_width * (uint32_t)scale_120 / 120;
-    uint32_t bh = ov->surf_height * (uint32_t)scale_120 / 120;
-
-    struct shm_buffer *b = buf_get(ov->shm, &ov->pool, bw, bh);
-    if (!b)
-        return;
-    b->state = BUF_BUSY;
-
-    cairo_t *cr = b->cr;
-    cairo_identity_matrix(cr);
-    cairo_scale(cr, scale_120 / 120.0, scale_120 / 120.0);
-
-    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_rgba(cr, 0, 0, 0, 0);
-    cairo_paint(cr);
-
-    render_grid(ov, cr, ov->rs);
-
+static void commit_buffer(struct overlay *ov, struct shm_buffer *buffer) {
+    buffer->state = BUF_BUSY;
     wl_surface_set_buffer_scale(ov->surface, 1);
-    wl_surface_attach(ov->surface, b->wl_buf, 0, 0);
+    wl_surface_attach(ov->surface, buffer->wl_buf, 0, 0);
     if (ov->viewport) {
         wp_viewport_set_destination(ov->viewport, (int32_t)ov->surf_width,
                                     (int32_t)ov->surf_height);
@@ -525,6 +662,40 @@ static void send_frame(struct overlay *ov) {
                       (int32_t)ov->surf_height);
     wl_surface_commit(ov->surface);
 }
+
+static bool map_transparent_surface(struct overlay *ov) {
+    if (!ov->configured || ov->surf_width == 0 || ov->surf_height == 0)
+        return false;
+
+    struct shm_buffer *buffer =
+        buf_get(ov->shm, &ov->pool, ov->surf_width, ov->surf_height);
+    if (!buffer)
+        return false;
+
+    clear_buffer(buffer);
+    commit_buffer(ov, buffer);
+    return true;
+}
+
+static void send_frame(struct overlay *ov) {
+    if (!ov->configured || !ov->rs)
+        return;
+
+    int32_t scale_120 = get_scale_120(ov);
+    uint32_t buffer_width = ov->surf_width * (uint32_t)scale_120 / 120;
+    uint32_t buffer_height = ov->surf_height * (uint32_t)scale_120 / 120;
+
+    struct shm_buffer *buffer =
+        buf_get(ov->shm, &ov->pool, buffer_width, buffer_height);
+    if (!buffer)
+        return;
+
+    clear_buffer(buffer);
+    cairo_scale(buffer->cr, scale_120 / 120.0, scale_120 / 120.0);
+    render_grid(ov, buffer->cr, ov->rs);
+    commit_buffer(ov, buffer);
+}
+
 /* Set the cairo source to a packed 0xRRGGBBAA color, scaling each
  * channel to cairo's 0..1 range. */
 static void set_source_color(cairo_t *cr, uint32_t packed) {
@@ -595,74 +766,55 @@ static void request_frame(struct overlay *ov) {
     wl_surface_commit(ov->surface);
 }
 
-struct overlay *overlay_create(void) {
-    struct overlay *ov = calloc(1, sizeof(*ov));
-    if (!ov)
-        return NULL;
-
-    ov->out_scale = 1;
-    ov->repeat_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    ov->xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    if (!ov->xkb_ctx) {
-        free(ov);
-        return NULL;
-    }
-
-    ov->display = wl_display_connect(NULL);
-    if (!ov->display) {
-        log_err("failed to connect to Wayland compositor");
-        xkb_context_unref(ov->xkb_ctx);
-        free(ov);
-        return NULL;
-    }
-
-    ov->registry = wl_display_get_registry(ov->display);
-    wl_registry_add_listener(ov->registry, &registry_listener, ov);
-    wl_display_roundtrip(ov->display);
-
+static bool required_globals_available(const struct overlay *ov) {
     if (!ov->compositor) {
         log_err("missing wl_compositor");
-        goto fail;
+        return false;
     }
     if (!ov->shm) {
         log_err("missing wl_shm");
-        goto fail;
+        return false;
     }
     if (!ov->layer_shell) {
         log_err("missing zwlr_layer_shell_v1");
-        goto fail;
+        return false;
     }
     if (!ov->vptr_mgr) {
         log_err("missing zwlr_virtual_pointer_manager_v1");
-        goto fail;
+        return false;
+    }
+    if (zwlr_virtual_pointer_manager_v1_get_version(ov->vptr_mgr) <
+        ZWLR_VIRTUAL_POINTER_MANAGER_V1_CREATE_VIRTUAL_POINTER_WITH_OUTPUT_SINCE_VERSION) {
+        log_err("zwlr_virtual_pointer_manager_v1 version 2 is required");
+        return false;
     }
     if (!ov->seat) {
         log_err("missing wl_seat");
-        goto fail;
+        return false;
     }
-
-    wl_seat_add_listener(ov->seat, &seat_listener, ov);
-
-    if (ov->wl_output) {
-        wl_output_add_listener(ov->wl_output, &output_listener, ov);
+    if (!ov->outputs) {
+        log_err("missing wl_output");
+        return false;
     }
+    return true;
+}
 
-    if (ov->xdg_out_mgr && ov->wl_output) {
-        struct zxdg_output_v1 *xo = zxdg_output_manager_v1_get_xdg_output(
-            ov->xdg_out_mgr, ov->wl_output);
-        zxdg_output_v1_add_listener(xo, &xdg_out_listener, ov);
+static void log_outputs(const struct overlay *ov) {
+    for (const struct output *output = ov->outputs; output;
+         output = output->next) {
+        log_debug("output %s: %dx%d+%d+%d scale=%d",
+                  output_name_or_unknown(output), output->width, output->height,
+                  output->x, output->y, output->scale);
     }
+}
 
-    wl_display_roundtrip(ov->display);
-
-    log_debug("output: %dx%d+%d+%d scale=%d", ov->out_width, ov->out_height,
-              ov->out_x, ov->out_y, ov->out_scale);
-
+static bool create_overlay_surface(struct overlay *ov) {
     ov->surface = wl_compositor_create_surface(ov->compositor);
+    wl_surface_add_listener(ov->surface, &surface_listener, ov);
 
     ov->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-        ov->layer_shell, ov->surface, ov->wl_output,
-        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "waynav");
+        ov->layer_shell, ov->surface, NULL, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+        "waynav");
     zwlr_layer_surface_v1_add_listener(ov->layer_surface, &layer_listener, ov);
     zwlr_layer_surface_v1_set_exclusive_zone(ov->layer_surface, -1);
     zwlr_layer_surface_v1_set_anchor(ov->layer_surface,
@@ -677,26 +829,65 @@ struct overlay *overlay_create(void) {
             ov->frac_scale_mgr, ov->surface);
         wp_fractional_scale_v1_add_listener(ov->frac_scale, &frac_listener, ov);
     }
-
-    if (ov->viewporter) {
+    if (ov->viewporter)
         ov->viewport = wp_viewporter_get_viewport(ov->viewporter, ov->surface);
-    }
 
-    /* Empty input region — mouse passes through overlay. */
+    /* Keep pointer input on the windows beneath the overlay. */
     ov->input_region = wl_compositor_create_region(ov->compositor);
-    wl_region_add(ov->input_region, 0, 0, 0, 0);
     wl_surface_set_input_region(ov->surface, ov->input_region);
-
     wl_surface_commit(ov->surface);
 
-    /* Roundtrip to get configure. */
     wl_display_roundtrip(ov->display);
+    if (!map_transparent_surface(ov)) {
+        log_err("failed to map overlay surface");
+        return false;
+    }
+
+    /* Wait for wl_surface.enter to identify the compositor-selected output. */
+    wl_display_roundtrip(ov->display);
+    if (!ov->selected_output) {
+        log_err("compositor did not select an output for the overlay");
+        return false;
+    }
+    return true;
+}
+
+struct overlay *overlay_create(void) {
+    struct overlay *ov = calloc(1, sizeof(*ov));
+    if (!ov)
+        return NULL;
+
+    ov->repeat_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    ov->xkb_ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    if (!ov->xkb_ctx)
+        goto fail;
+
+    ov->display = wl_display_connect(NULL);
+    if (!ov->display) {
+        log_err("failed to connect to Wayland compositor");
+        goto fail;
+    }
+
+    ov->registry = wl_display_get_registry(ov->display);
+    wl_registry_add_listener(ov->registry, &registry_listener, ov);
+    wl_display_roundtrip(ov->display);
+
+    if (!required_globals_available(ov))
+        goto fail;
+
+    wl_seat_add_listener(ov->seat, &seat_listener, ov);
+    wl_display_roundtrip(ov->display);
+    log_outputs(ov);
+
+    if (!create_overlay_surface(ov))
+        goto fail;
 
     ov->vptr =
         zwlr_virtual_pointer_manager_v1_create_virtual_pointer_with_output(
-            ov->vptr_mgr, ov->seat, ov->wl_output);
+            ov->vptr_mgr, ov->seat, ov->selected_output->wl_output);
 
-    log_info("overlay created: %ux%u", ov->surf_width, ov->surf_height);
+    log_info("overlay created: %ux%u on %s", ov->surf_width, ov->surf_height,
+             output_name_or_unknown(ov->selected_output));
     return ov;
 
 fail:
@@ -757,13 +948,16 @@ void overlay_destroy(struct overlay *ov) {
         wp_viewporter_destroy(ov->viewporter);
     if (ov->vptr_mgr)
         zwlr_virtual_pointer_manager_v1_destroy(ov->vptr_mgr);
+    while (ov->outputs) {
+        struct output *output = ov->outputs;
+        ov->outputs = output->next;
+        output_destroy(output);
+    }
     if (ov->xdg_out_mgr)
         zxdg_output_manager_v1_destroy(ov->xdg_out_mgr);
     destroy_layer_shell(ov->layer_shell);
     if (ov->seat)
         wl_seat_destroy(ov->seat);
-    if (ov->wl_output)
-        wl_output_destroy(ov->wl_output);
     if (ov->shm)
         wl_shm_destroy(ov->shm);
     if (ov->compositor)
@@ -788,18 +982,21 @@ void overlay_redraw(struct overlay *ov, struct region_state *rs) {
 int overlay_get_width(const struct overlay *ov) {
     if (!ov)
         return 0;
-    /* Prefer xdg-output logical size, fall back to surface. */
-    if (ov->out_width > 0)
-        return ov->out_width;
-    return (int)ov->surf_width;
+    if (ov->surf_width > 0)
+        return (int)ov->surf_width;
+    if (ov->selected_output)
+        return ov->selected_output->width;
+    return 0;
 }
 
 int overlay_get_height(const struct overlay *ov) {
     if (!ov)
         return 0;
-    if (ov->out_height > 0)
-        return ov->out_height;
-    return (int)ov->surf_height;
+    if (ov->surf_height > 0)
+        return (int)ov->surf_height;
+    if (ov->selected_output)
+        return ov->selected_output->height;
+    return 0;
 }
 
 void overlay_stop(struct overlay *ov) {

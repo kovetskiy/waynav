@@ -194,6 +194,36 @@ waynav:int:assert-container-socket() {
 	return 88
 }
 
+# @description Focus an output in the headless Sway container.
+# @arg $1 string Output name.
+# @stdout None.
+# @stderr Docker or Sway diagnostics on failure.
+# @exitcode 0 If Sway focused the output.
+# @exitcode 88 If the harness assertion fails.
+waynav:int:focus-sway-output() {
+	local output_name=$1
+	local sway_socket=''
+
+	printf '[int] focusing Sway output: %s\n' "$output_name" >&2
+	tests:eval "$WAYNAV_INT_DOCKER" exec \
+		"$WAYNAV_INT_SWAY_CONTAINER" \
+		find /tmp/xdg -maxdepth 1 -name 'sway-ipc.*.sock' -print -quit
+	:waynav:int:print-last-output-on-failure
+	tests:assert-success
+	sway_socket=$(tests:get-stdout)
+	if [[ -z $sway_socket ]]; then
+		printf '[int] Sway IPC socket not found\n' >&2
+		tests:eval false
+		tests:assert-success
+	fi
+
+	tests:eval "$WAYNAV_INT_DOCKER" exec \
+		"$WAYNAV_INT_SWAY_CONTAINER" \
+		swaymsg -s "$sway_socket" focus output "$output_name"
+	:waynav:int:print-last-output-on-failure
+	tests:assert-success
+}
+
 # @description Run the waynav overlay smoke script in the Sway container.
 # @noargs
 # @stdout None.
