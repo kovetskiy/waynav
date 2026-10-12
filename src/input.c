@@ -259,6 +259,15 @@ static int execute_segment(struct overlay *ov, struct region_state *rs,
 static void execute_command_chain(struct overlay *ov, struct region_state *rs,
                                   const struct command *cmds, int ncmds,
                                   bool record_history) {
+    /* Focus must reach the client before a terminating click delivers its
+     * primary selection. The handoff can dispatch keys reentrantly. */
+    for (int index = 0; index < ncmds; index++) {
+        if (cmds[index].type == CMD_END) {
+            overlay_release_keyboard(ov);
+            break;
+        }
+    }
+
     region_resize(rs, overlay_get_width(ov), overlay_get_height(ov));
 
     bool did_end = false;

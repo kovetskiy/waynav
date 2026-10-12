@@ -19,6 +19,7 @@ enum test_event {
     EVENT_CLICK,
     EVENT_BUTTON_DOWN,
     EVENT_BUTTON_UP,
+    EVENT_RELEASE_KEYBOARD,
 };
 
 static bool sigaction_failure;
@@ -51,6 +52,7 @@ struct overlay {
     int click_calls;
     int button_down_calls;
     int button_up_calls;
+    int release_keyboard_calls;
     int cursor_position_calls;
     int cursor_x;
     int cursor_y;
@@ -78,6 +80,11 @@ void overlay_redraw(struct overlay *ov, struct region_state *rs) {
 void overlay_stop(struct overlay *ov) {
     ov->stop_calls++;
     record_event(ov, EVENT_STOP);
+}
+
+void overlay_release_keyboard(struct overlay *ov) {
+    ov->release_keyboard_calls++;
+    record_event(ov, EVENT_RELEASE_KEYBOARD);
 }
 
 int overlay_get_width(const struct overlay *ov) {
@@ -391,9 +398,10 @@ static void test_end_stops_command_chain(void) {
     assert(ov.button_down_calls == 0);
     assert(!rs.dragging);
     assert(rs.drag_button == 0);
-    assert(ov.event_count == 2);
-    assert(ov.events[0] == EVENT_STOP);
-    assert(ov.events[1] == EVENT_REDRAW);
+    assert(ov.event_count == 3);
+    assert(ov.events[0] == EVENT_RELEASE_KEYBOARD);
+    assert(ov.events[1] == EVENT_STOP);
+    assert(ov.events[2] == EVENT_REDRAW);
 }
 
 static void test_end_makes_later_history_back_unreachable(void) {
@@ -598,10 +606,11 @@ static void test_end_releases_active_drag(void) {
     assert(ov.button_up_calls == 1);
     assert(ov.last_button_up == 1);
     assert(ov.stop_calls == 1);
-    assert(ov.event_count == 6);
-    assert(ov.events[3] == EVENT_BUTTON_UP);
-    assert(ov.events[4] == EVENT_STOP);
-    assert(ov.events[5] == EVENT_REDRAW);
+    assert(ov.event_count == 7);
+    assert(ov.events[3] == EVENT_RELEASE_KEYBOARD);
+    assert(ov.events[4] == EVENT_BUTTON_UP);
+    assert(ov.events[5] == EVENT_STOP);
+    assert(ov.events[6] == EVENT_REDRAW);
 }
 
 static void test_end_without_drag_does_not_release_button(void) {
@@ -620,9 +629,57 @@ static void test_end_without_drag_does_not_release_button(void) {
     assert(rs.drag_button == 0);
     assert(ov.button_up_calls == 0);
     assert(ov.stop_calls == 1);
-    assert(ov.event_count == 2);
-    assert(ov.events[0] == EVENT_STOP);
-    assert(ov.events[1] == EVENT_REDRAW);
+    assert(ov.event_count == 3);
+    assert(ov.events[0] == EVENT_RELEASE_KEYBOARD);
+    assert(ov.events[1] == EVENT_STOP);
+    assert(ov.events[2] == EVENT_REDRAW);
+}
+
+/* "warp,click 2,end" is middle click paste, and the order is the whole of it: a
+ * client is offered the primary selection only while it holds keyboard focus,
+ * so a click sent before the keyboard is handed back arrives somewhere with
+ * nothing to paste. */
+static void test_ending_batch_releases_the_keyboard_before_clicking(void) {
+    struct overlay ov;
+    memset(&ov, 0, sizeof(ov));
+
+    struct region_state rs;
+    region_init(&rs, 800, 600);
+
+    struct command commands[] = {
+        {.type = CMD_WARP},
+        {.type = CMD_CLICK, .arg.button = 2},
+        {.type = CMD_END},
+    };
+    execute_commands(&ov, &rs, commands, 3);
+
+    assert(ov.release_keyboard_calls == 1);
+    assert(ov.click_calls == 1);
+    assert(ov.last_click_button == 2);
+    assert(ov.event_count == 5);
+    assert(ov.events[0] == EVENT_RELEASE_KEYBOARD);
+    assert(ov.events[1] == EVENT_WARP);
+    assert(ov.events[2] == EVENT_CLICK);
+    assert(ov.events[3] == EVENT_STOP);
+    assert(ov.events[4] == EVENT_REDRAW);
+}
+
+/* A persistent click must not use the permanent keyboard release for end. */
+static void test_click_without_end_does_not_permanently_release_keyboard(void) {
+    struct overlay ov;
+    memset(&ov, 0, sizeof(ov));
+
+    struct region_state rs;
+    region_init(&rs, 800, 600);
+
+    struct command commands[] = {
+        {.type = CMD_WARP},
+        {.type = CMD_CLICK, .arg.button = 2},
+    };
+    execute_commands(&ov, &rs, commands, 2);
+
+    assert(ov.release_keyboard_calls == 0);
+    assert(ov.click_calls == 1);
 }
 
 int main(void) {
@@ -644,6 +701,8 @@ int main(void) {
     test_shell_children_are_reaped();
     test_end_releases_active_drag();
     test_end_without_drag_does_not_release_button();
+    test_ending_batch_releases_the_keyboard_before_clicking();
+    test_click_without_end_does_not_permanently_release_keyboard();
 
     printf("All input tests passed.\n");
     return 0;

@@ -122,6 +122,18 @@ waynav targets wlroots-compatible compositors. It currently relies on:
 
 It has been tested on niri.
 
+## Click regression test
+
+In an isolated compositor session, check all three mouse buttons, continued
+navigation, held-key repeat, ending clicks, and primary-selection paste against
+unpatched Ghostty. This uses `wtype`, `wl-copy`, and `wl-paste`.
+
+```sh
+XDG_RUNTIME_DIR=/path/to/private/runtime python3 int/lib/run-ghostty-click-smoke.py \
+  --display wayland-1 --waynav ./build/waynav --ghostty ghostty --wtype wtype \
+  --result-dir /tmp/waynav-click-results
+```
+
 ## References
 
 These projects were useful while designing or implementing waynav:
