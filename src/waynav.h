@@ -129,11 +129,22 @@ void overlay_stop(struct overlay *ov);
 /* Release an active drag, if any. */
 void overlay_stop_drag(struct overlay *ov, struct region_state *rs);
 
+/* Give keyboard focus back to whatever is under the pointer, and wait for the
+ * compositor to have done it.
+ *
+ * A click is only as useful as the focus behind it. A Wayland client is handed
+ * the selection and primary selection only while it holds keyboard focus, so a
+ * middle click delivered while this overlay holds the keyboard reaches a client
+ * with nothing to paste. Idempotent, and there is no way back: the overlay is
+ * ending by the time this is called. */
+void overlay_release_keyboard(struct overlay *ov);
+
 /* Coordinates are in logical output space. */
 void vptr_warp(struct overlay *ov, int x, int y);
 
 /* Keynav button numbers: 1=left, 2=middle, 3=right,
- * 4=scroll-up, 5=scroll-down. */
+ * 4=scroll-up, 5=scroll-down. Button clicks temporarily hand keyboard focus to
+ * the target so it can receive primary selection offers and focused clicks. */
 void vptr_click(struct overlay *ov, int button);
 void vptr_button_down(struct overlay *ov, int button);
 void vptr_button_up(struct overlay *ov, int button);

@@ -200,6 +200,8 @@ struct overlay {
     int cursor_x;
     int cursor_y;
     bool cursor_position_known;
+    bool keyboard_released;
+    bool keyboard_focused;
 
     /* Keyboard / xkb */
     struct xkb_context *xkb_ctx;
@@ -967,19 +969,38 @@ static void kbd_repeat_info(void *data, struct wl_keyboard *kbd, int32_t rate,
     log_debug("repeat info: rate=%d delay=%d", rate, delay);
 }
 
+static void kbd_enter(void *data, struct wl_keyboard *kbd, uint32_t serial,
+                      struct wl_surface *surface, struct wl_array *keys) {
+    (void)kbd;
+    (void)serial;
+    struct overlay *ov = data;
+    ov->keyboard_focused = surface == ov->surface;
+    ov->pressed_key_count = 0;
+    if (!ov->keyboard_focused)
+        return;
+
+    /* Releases during a focus handoff went to the other client. Rebuild the
+     * held-key set without executing bindings for keys that are still down. */
+    uint32_t *key;
+    wl_array_for_each(key, keys) pressed_key_add(ov, *key);
+    log_debug("keyboard focus entered");
+}
+
 static void kbd_leave(void *data, struct wl_keyboard *kbd, uint32_t serial,
                       struct wl_surface *surface) {
     (void)kbd;
     (void)serial;
     (void)surface;
     struct overlay *ov = data;
+    ov->keyboard_focused = false;
     ov->pressed_key_count = 0;
     disarm_repeat(ov);
+    log_debug("keyboard focus left");
 }
 
 static const struct wl_keyboard_listener kbd_listener = {
     .keymap = kbd_keymap,
-    .enter = noop,
+    .enter = kbd_enter,
     .leave = kbd_leave,
     .key = kbd_key,
     .modifiers = kbd_modifiers,
@@ -1632,6 +1653,106 @@ static void dispatch_repeat(struct overlay *ov) {
     run_key_binding(ov, ov->repeat_key, binding, false);
 }
 
+static bool wait_for_state(struct overlay *ov, const bool *state, bool expected,
+                           const char *description) {
+    struct timespec started;
+    if (clock_gettime(CLOCK_MONOTONIC, &started) < 0)
+        return false;
+
+    while (!ov->stop_requested) {
+        if (wl_display_dispatch_pending(ov->display) < 0)
+            return false;
+        if (ov->stop_requested)
+            return false;
+        if (*state == expected)
+            return true;
+
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) < 0)
+            return false;
+        int64_t elapsed_ms = (int64_t)(now.tv_sec - started.tv_sec) * 1000 +
+                             (now.tv_nsec - started.tv_nsec) / 1000000;
+        int remaining_ms = 1000 - (int)elapsed_ms;
+        if (remaining_ms <= 0) {
+            log_warn("timed out waiting for %s", description);
+            return false;
+        }
+
+        if (wl_display_prepare_read(ov->display) != 0)
+            continue;
+        struct pollfd fd = {.fd = wl_display_get_fd(ov->display),
+                            .events = POLLIN};
+        if (wl_display_flush(ov->display) < 0) {
+            if (errno != EAGAIN) {
+                wl_display_cancel_read(ov->display);
+                return false;
+            }
+            fd.events |= POLLOUT;
+        }
+        int result = poll(&fd, 1, remaining_ms);
+        if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            wl_display_cancel_read(ov->display);
+            return false;
+        }
+        if (result < 0 || !(fd.revents & POLLIN)) {
+            wl_display_cancel_read(ov->display);
+            if (result < 0 && errno != EINTR)
+                return false;
+        } else if (read_display_events(ov, fd.revents) != 0) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static bool set_keyboard_interactivity(struct overlay *ov, bool exclusive) {
+    zwlr_layer_surface_v1_set_keyboard_interactivity(
+        ov->layer_surface,
+        exclusive ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE
+                  : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+    wl_surface_commit(ov->surface);
+    if (wl_display_flush(ov->display) < 0 && errno != EAGAIN)
+        return false;
+    /* A sync reply can precede River's window-manager transaction. Wait for
+     * the keyboard event rather than assuming a roundtrip transfers focus. */
+    return wait_for_state(ov, &ov->keyboard_focused, exclusive,
+                          exclusive ? "keyboard focus to enter"
+                                    : "keyboard focus to leave");
+}
+
+static void click_frame_done(void *data, struct wl_callback *callback,
+                             uint32_t time) {
+    (void)callback;
+    (void)time;
+    bool *completed = data;
+    *completed = true;
+}
+
+static const struct wl_callback_listener click_frame_listener = {
+    .done = click_frame_done,
+};
+
+static bool wait_for_click_frame(struct overlay *ov) {
+    bool completed = false;
+    struct wl_callback *callback = wl_surface_frame(ov->surface);
+    wl_callback_add_listener(callback, &click_frame_listener, &completed);
+    wl_surface_commit(ov->surface);
+    bool result = wait_for_state(ov, &completed, true, "the click frame");
+    wl_callback_destroy(callback);
+    return result;
+}
+
+void overlay_release_keyboard(struct overlay *ov) {
+    if (!ov || !ov->layer_surface || ov->keyboard_released)
+        return;
+
+    log_debug("releasing the keyboard grab");
+
+    ov->keyboard_released = true;
+    if (!set_keyboard_interactivity(ov, false))
+        overlay_stop(ov);
+}
+
 int overlay_run(struct overlay *ov, struct config *cfg,
                 struct region_state *rs) {
     if (!ov)
@@ -1727,7 +1848,7 @@ static uint32_t keynav_btn(int button) {
 }
 
 void vptr_click(struct overlay *ov, int button) {
-    if (!ov || !ov->vptr)
+    if (!ov || !ov->vptr || ov->stop_requested)
         return;
 
     if (button == 4 || button == 5) {
@@ -1753,6 +1874,28 @@ void vptr_click(struct overlay *ov, int button) {
     if (!btn)
         return;
 
+    bool restore_keyboard = !ov->keyboard_released;
+    uint32_t repeat_key = ov->repeat_key;
+    struct itimerspec repeat_timer;
+    bool resume_repeat = restore_keyboard && repeat_key != 0 &&
+                         timerfd_gettime(ov->repeat_fd, &repeat_timer) == 0;
+    if (restore_keyboard && !set_keyboard_interactivity(ov, false)) {
+        if (!ov->stop_requested && !set_keyboard_interactivity(ov, true))
+            overlay_stop(ov);
+        return;
+    }
+
+    /* Pointer entry need not update the client's cached position, and
+     * compositors can elide zero motion. Move one fixed-point unit and
+     * back to refresh it without moving a whole pixel. */
+    zwlr_virtual_pointer_v1_motion(ov->vptr, 0, 1, 0);
+    zwlr_virtual_pointer_v1_motion(ov->vptr, 0, -1, 0);
+    zwlr_virtual_pointer_v1_frame(ov->vptr);
+    if (!wait_for_click_frame(ov)) {
+        overlay_stop(ov);
+        return;
+    }
+
     zwlr_virtual_pointer_v1_button(ov->vptr, 0, btn,
                                    WL_POINTER_BUTTON_STATE_PRESSED);
     zwlr_virtual_pointer_v1_frame(ov->vptr);
@@ -1761,6 +1904,31 @@ void vptr_click(struct overlay *ov, int button) {
                                    WL_POINTER_BUTTON_STATE_RELEASED);
     zwlr_virtual_pointer_v1_frame(ov->vptr);
     wl_display_flush(ov->display);
+
+    if (!ov->stop_requested) {
+        /* GTK can update focus before dispatching buffered pointer events.
+         * The first callback can arrive at an imminent frame; wait for another
+         * before taking focus back or destroying the virtual pointer. */
+        if (!wait_for_click_frame(ov) || !wait_for_click_frame(ov)) {
+            overlay_stop(ov);
+            return;
+        }
+    }
+
+    if (restore_keyboard && !ov->stop_requested) {
+        if (!set_keyboard_interactivity(ov, true)) {
+            overlay_stop(ov);
+        } else if (resume_repeat && pressed_key_contains(ov, repeat_key)) {
+            /* A focus leave disarms repeat. Resume its remaining interval,
+             * rather than starting the initial delay on every repeated click.
+             */
+            ov->repeat_key = repeat_key;
+            if (timerfd_settime(ov->repeat_fd, 0, &repeat_timer, NULL) < 0) {
+                log_warn("click: failed to resume repeat: %s", strerror(errno));
+                ov->repeat_key = 0;
+            }
+        }
+    }
 }
 
 void vptr_button_down(struct overlay *ov, int button) {
